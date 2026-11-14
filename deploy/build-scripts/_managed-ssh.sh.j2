@@ -1,0 +1,75 @@
+# ── Systems-administration SSH endpoint (digital.md §4.6) ────────────────────
+# The same local account exists on the bastion and the three managed OT hosts.
+# Its password is locked; the sole credential is the public key rendered into
+# /etc, where only root can replace it. Each server uses only its deterministic
+# Ed25519 host key.
+incus exec "$BUILD_CTR" -- apt-get install -y --no-install-recommends \
+    openssh-server sudo
+
+ADMIN_USER="{{ systems_administrator.username }}"
+ADMIN_SHELL="/bin/bash"
+{% if node.ssh_role == 'bastion' %}
+ADMIN_SHELL="/usr/sbin/nologin"
+{% endif %}
+incus exec "$BUILD_CTR" -- bash -c "
+getent group '$ADMIN_USER' >/dev/null || groupadd '$ADMIN_USER'
+id '$ADMIN_USER' >/dev/null 2>&1 \
+    || useradd --create-home --gid '$ADMIN_USER' --shell '$ADMIN_SHELL' '$ADMIN_USER'
+usermod --shell '$ADMIN_SHELL' --lock '$ADMIN_USER'
+install -d -o root -g root -m 0755 /etc/ssh/authorized_keys
+install -d -o root -g root -m 0755 /run/sshd
+"
+incus file push --mode 0644 build/ssh/{{ node_name }}/authorized_keys \
+    "$BUILD_CTR/etc/ssh/authorized_keys/$ADMIN_USER"
+incus exec "$BUILD_CTR" -- chown root:root "/etc/ssh/authorized_keys/$ADMIN_USER"
+
+# Remove package-generated host keys before installing the reproducible one.
+incus exec "$BUILD_CTR" -- sh -c \
+    'rm -f /etc/ssh/ssh_host_rsa_key* /etc/ssh/ssh_host_ecdsa_key* /etc/ssh/ssh_host_ed25519_key*'
+incus file push --mode 0600 build/ssh/{{ node_name }}/ssh_host_ed25519_key \
+    "$BUILD_CTR/etc/ssh/ssh_host_ed25519_key"
+incus file push --mode 0644 build/ssh/{{ node_name }}/ssh_host_ed25519_key.pub \
+    "$BUILD_CTR/etc/ssh/ssh_host_ed25519_key.pub"
+incus exec "$BUILD_CTR" -- chown root:root \
+    /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key.pub
+
+incus exec "$BUILD_CTR" -- tee /etc/ssh/sshd_config.d/50-ravensport-admin.conf \
+    > /dev/null <<SSHDCONF
+HostKey /etc/ssh/ssh_host_ed25519_key
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+AllowUsers $ADMIN_USER
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+{% if node.ssh_role == 'bastion' %}
+PermitTTY no
+AllowTcpForwarding local
+PermitOpen fms-01:22 hist-01:22 hmi-01:22
+{% else %}
+AllowTcpForwarding no
+{% endif %}
+SSHDCONF
+
+{% if node.ssh_role == 'managed' %}
+# Keep the specified commands non-interactive when they run on a terminal.
+# `sudo` preserves SYSTEMD_PAGER so journalctl follows the same rule.
+incus exec "$BUILD_CTR" -- bash -c "
+printf '\nexport SYSTEMD_PAGER=cat\n' >> '/home/$ADMIN_USER/.bashrc'
+chown '$ADMIN_USER:$ADMIN_USER' '/home/$ADMIN_USER/.bashrc'
+"
+incus exec "$BUILD_CTR" -- tee "/etc/sudoers.d/$ADMIN_USER" > /dev/null <<SUDOERS
+Defaults:$ADMIN_USER env_keep += "SYSTEMD_PAGER"
+$ADMIN_USER ALL=(ALL:ALL) NOPASSWD: ALL
+SUDOERS
+incus exec "$BUILD_CTR" -- chmod 0440 "/etc/sudoers.d/$ADMIN_USER"
+incus exec "$BUILD_CTR" -- visudo --check --file "/etc/sudoers.d/$ADMIN_USER"
+{% endif %}
+
+incus exec "$BUILD_CTR" -- sshd -t
+incus exec "$BUILD_CTR" -- systemctl enable ssh
+{% include "_journald-system-only.sh.j2" %}

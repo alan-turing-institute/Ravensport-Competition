@@ -1,0 +1,50 @@
+# ── Static network and minimal host names ────────────────────────────────────
+incus file push --mode 0600 build/network-config/{{ node_name }}.yaml \
+    "$BUILD_CTR/etc/netplan/99-ravensport.yaml"
+incus exec "$BUILD_CTR" -- rm -f /etc/netplan/50-cloud-init.yaml
+incus exec "$BUILD_CTR" -- tee /tmp/gen-networkd.py > /dev/null <<'PYEOF'
+import os
+
+import yaml
+
+os.makedirs("/etc/systemd/network", exist_ok=True)
+with open("/etc/netplan/99-ravensport.yaml") as f:
+    cfg = yaml.safe_load(f)
+for iface, spec in (cfg.get("ethernets") or {}).items():
+    lines = ["[Match]", f"Name={iface}", "", "[Network]"]
+    for addr in spec.get("addresses") or []:
+        lines.append(f"Address={addr}")
+    routes = spec.get("routes") or []
+    for route in routes:
+        if str(route.get("to")) == "default":
+            lines.append(f"Gateway={route['via']}")
+    for dns in (spec.get("nameservers") or {}).get("addresses") or []:
+        lines.append(f"DNS={dns}")
+    for route in routes:
+        if str(route.get("to")) != "default":
+            lines += ["", "[Route]", f"Destination={route['to']}", f"Gateway={route['via']}"]
+    path = f"/etc/systemd/network/10-ravensport-{iface}.network"
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+PYEOF
+incus exec "$BUILD_CTR" -- python3 /tmp/gen-networkd.py
+incus exec "$BUILD_CTR" -- rm /tmp/gen-networkd.py
+incus file push build/hosts/{{ node_name }} "$BUILD_CTR/etc/hosts"
+incus file push build/hosts/{{ node_name }} "$BUILD_CTR/etc/hosts.ravensport"
+incus file push build/chrony/{{ node_name }}.conf "$BUILD_CTR/etc/chrony/chrony.conf"
+
+incus exec "$BUILD_CTR" -- tee /etc/systemd/system/ravensport-hosts.service \
+    > /dev/null <<'UNIT'
+[Unit]
+Description=Restore /etc/hosts from Ravensport canonical source
+DefaultDependencies=no
+Before=network-pre.target sysinit.target
+After=local-fs.target
+[Service]
+Type=oneshot
+ExecStart=/bin/cp /etc/hosts.ravensport /etc/hosts
+RemainAfterExit=yes
+[Install]
+WantedBy=sysinit.target
+UNIT
+incus exec "$BUILD_CTR" -- systemctl daemon-reload

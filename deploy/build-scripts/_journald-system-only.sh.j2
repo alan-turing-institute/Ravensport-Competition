@@ -1,0 +1,10 @@
+# Keep SSH session records in the system journal. Per-user journal creation on
+# the first login is otherwise observed by Wazuh as a rotation, which can move
+# its cursor past the authentication record (siem.md §3).
+incus exec "$BUILD_CTR" -- install -d -o root -g root -m 0755 \
+    /etc/systemd/journald.conf.d
+incus exec "$BUILD_CTR" -- tee \
+    /etc/systemd/journald.conf.d/90-ravensport.conf > /dev/null <<'JOURNALD'
+[Journal]
+SplitMode=none
+JOURNALD
