@@ -1,0 +1,78 @@
+[package]
+name = "sim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# `signal` receives the service manager's stop request (sim-impl.md,
+# "Stopping and warm start").
+tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net", "io-util", "signal"] }
+rand = "0.9"
+rand_distr = "0.5"
+# ChaCha8Rng is value-stable across versions/platforms, so seeded runs reproduce
+# exactly — the basis for the sim's reproducibility.
+rand_chacha = "0.9"
+# Calendar date-time for the simulated wall clock (SimClock start epoch and
+# now_datetime). PrimitiveDateTime models a timezone-less console clock; the
+# `macros` feature gives the const `datetime!` epoch constructor; `parsing` reads
+# the RFC 3339 instants of the reconciliation user's retrieved records and of
+# the checkpoint.
+time = { version = "0.3", features = ["macros", "formatting", "parsing"] }
+# HTTP client for the dock operator actor's digital interface (the HMI HTTP API,
+# digital.md §2.3). That leg's TLS is terminated at the HAProxy layer, so the
+# dock operator speaks plain HTTP; the reconciliation user's remote desktop
+# session is the sim's one TLS connection (below). `json` gives serde request/response bodies; `local_address`
+# source-binding (the dock operator's `local_addr`) is in the base API.
+reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
+# JSON (de)serialisation of the HMI API request and response bodies and of the
+# checkpoint (sim-impl.md, "Checkpoint document").
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+# The reconciliation user's remote desktop clipboard channel (sim-impl.md,
+# "Reading the clipboard"): the versions tests/integration/recon-probe proved
+# against recon-01. `ironrdp-core` provides the `AsAny` the backend implements.
+ironrdp-cliprdr = "0.8"
+ironrdp-core = "0.3"
+# The reconciliation user's remote desktop session (sim-impl.md, "Session"):
+# the connector, session loop, keyboard input and protocol data units, at the
+# versions tests/integration/recon-probe proved. Credential Security Support
+# Provider is not used, so ironrdp-tokio needs no network client feature.
+# Use the smallest coherent direct-crate release set whose connector no longer
+# pins Curve25519 5.0.0-pre.6. That prerelease cannot coexist with patched
+# russh's stable Curve25519 5.x dependency in one sim binary.
+ironrdp-connector = "0.11"
+ironrdp-graphics = "0.10"
+ironrdp-input = "0.8"
+ironrdp-session = "0.12"
+ironrdp-tokio = "0.11"
+ironrdp-pdu = "0.10"
+# The session's TLS, verified against the deployment's root and the name
+# `recon-01` (sim-impl.md, "Connecting"). The `ring` provider is named in the
+# configuration itself, so nothing depends on a process-wide default; `ring`
+# compiles C, so a musl build needs a C compiler targeting musl.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
+# Sparse structured logging (sim-impl.md "Error handling and task supervision"):
+# a recovered transient failure (WARN) and the single fatal event (ERROR) only.
+# `env-filter` lets the binary default the level to `warn` so a healthy run is
+# effectively silent. The library emits events; the subscriber is installed by
+# the binary.
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+# SSH client for the systems-administrator actor. Pin the patched release: the
+# actor accepts data from a deliberately exposed testbed service, so carrying
+# known client-side protocol defects is not appropriate even in the benchmark.
+russh = "=0.64.1"
+async-trait = "0.1.89"
+
+# test-util (tokio::time::pause / advance) is confined to dev-dependencies so
+# the library cannot use it: under the edition-2021 resolver its feature is not
+# enabled for a plain `cargo build`, only when compiling tests.
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+tokio-modbus = { version = "0.17.0", default-features = false, features = ["tcp"] }
+# Certificates issued from a root of the test's own, for the reconciliation
+# user's TLS tests.
+rcgen = "0.13"
+# Temporary run and state directories for the checkpoint tests.
+tempfile = "3"
