@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""The defender of the example Track A entry with Packetbeat (README.md).
+
+Packetbeat on siem-01 reports each connection to the Wazuh manager's
+management interface, Transmission Control Protocol (TCP) port 55000, and to
+its enrolment service, TCP port 1515. Packetbeat also reports each opening of
+a connection to the Wazuh agents' channel, TCP port 1514. The Wazuh manager
+archives each report in archives.json. At each decision request the defender
+reads, through the query interface, the reports archived since its previous
+read, and raises the Track A alarm at the first report of either:
+
+1. a connection to the management interface or the enrolment service, which
+   no process of the port uses in operation; or
+2. a connection to the agents' channel from an address other than those from
+   which the twelve monitored hosts' Wazuh agents connect.
+
+The alarm then stands for every later decision request, which only a
+suppressed episode sends. The defender keeps no state between episodes and
+writes nothing to its volume.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).resolve().parent
+TELEMETRY = HERE / "telemetry.json"
+# The input that carries Packetbeat's events: the file that Packetbeat's
+# systemd unit appends to, which the Wazuh manager on siem-01 reads
+# (packetbeat.service, localfile.xml).
+HOST = "siem-01"
+EVENTS = "/var/log/packetbeat/events.ndjson"
+# The Packetbeat events that report a connection.
+KINDS = ("flow", "tls")
+# The Wazuh manager's interfaces that no process of the port uses in
+# operation (siem.md §6, what the system produces; §8.1, placement and
+# firewall policy).
+INTERFACES = {
+    55000: "the Wazuh manager's management interface",
+    1515: "the Wazuh manager's enrolment service",
+}
+# The Wazuh agents' channel, and the address from which each monitored host's
+# Wazuh agent connects to it: a firewall node connects from its address on
+# the path to siem-01 (deploy/topology.yaml).
+AGENTS_PORT = 1514
+MONITORED_HOSTS = {
+    "10.20.0.2": "fw-ext-dmz",
+    "10.30.0.2": "fw-dmz-it",
+    "10.20.0.4": "fw-ot-dmz",
+    "10.20.0.10": "atg-relay-01",
+    "10.20.0.20": "hist-dmz-01",
+    "10.20.0.30": "dmz-bastion-01",
+    "10.30.0.10": "recon-01",
+    "10.30.0.20": "corp-it",
+    "10.30.0.40": "admin-01",
+    "10.40.0.10": "fms-01",
+    "10.40.0.11": "hist-01",
+    "10.40.0.12": "hmi-01",
+}
+
+
+def packetbeat_event(record: dict[str, Any]) -> dict[str, Any] | None:
+    """The Packetbeat event that an archived record carries: the fields that
+    the Wazuh manager decoded from it, or the original line where the record
+    holds no decoded event. None for a record of anything else."""
+    data = record.get("data")
+    if isinstance(data, dict) and data.get("type") in KINDS:
+        return data
+    line = record.get("full_log")
+    if isinstance(line, str) and line.lstrip().startswith("{"):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            return None
+        if isinstance(event, dict) and event.get("type") in KINDS:
+            return event
+    return None
+
+
+def _port(value: Any) -> int | None:
+    """A port as an integer. The Wazuh manager writes the decoded numbers of a
+    JSON input as strings, some of them with a fractional part."""
+    try:
+        number = float(str(value))
+    except ValueError:
+        return None
+    return int(number) if number.is_integer() else None
+
+
+def _endpoint(event: dict[str, Any], side: str) -> tuple[str | None, int | None]:
+    part = event.get(side)
+    if not isinstance(part, dict):
+        return None, None
+    address = part.get("ip")
+    return (str(address) if address is not None else None), _port(part.get("port"))
+
+
+def finding(event: dict[str, Any]) -> str | None:
+    """Why a Packetbeat event raises the alarm, or None when it does not.
+    Packetbeat sees the first packet of every connection, since it starts
+    before any connection to siem-01, so the source of each event is the side
+    that opened the connection."""
+    network = event.get("network")
+    transport = network.get("transport") if isinstance(network, dict) else None
+    if transport not in (None, "tcp"):
+        return None
+    source, source_port = _endpoint(event, "source")
+    destination, destination_port = _endpoint(event, "destination")
+    connection = f"{event.get('type')} {source}:{source_port} to {destination}:{destination_port}"
+    if destination_port in INTERFACES:
+        return f"{connection}, a connection to {INTERFACES[destination_port]}"
+    if destination_port == AGENTS_PORT and source not in MONITORED_HOSTS:
+        return (
+            f"{connection}, a connection to the agents' channel from no monitored host"
+        )
+    return None
+
+
+class Detector:
+    """The alarm rule over the archived records that the defender reads."""
+
+    def __init__(self) -> None:
+        # The first finding, which raises the alarm and keeps it raised.
+        self.finding: str | None = None
+
+    def observe(self, records: Iterable[dict[str, Any]]) -> bool:
+        """Examine one read's records, and say whether the alarm stands."""
+        if self.finding is None:
+            for record in records:
+                event = packetbeat_event(record)
+                if event is not None:
+                    self.finding = finding(event)
+                    if self.finding is not None:
+                        break
+        return self.finding is not None
+
+
+def main() -> int:
+    # protocol.py lies beside this program in the entry's volume, and in
+    # ../common in the repository (README.md, "The entry's storage volume").
+    sys.path[:0] = [str(HERE), str(HERE.parent / "common")]
+    import protocol
+
+    telemetry = protocol.Telemetry.load(str(TELEMETRY))
+    detector = Detector()
+
+    def decide(request: protocol.Request) -> bool:
+        if detector.finding is not None:
+            return True
+        records = protocol.read("archives", HOST, EVENTS, telemetry=telemetry)
+        if detector.observe(records):
+            print(f"defender: step {request.step}: {detector.finding}", file=sys.stderr)
+        return detector.finding is not None
+
+    return protocol.run(decide)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

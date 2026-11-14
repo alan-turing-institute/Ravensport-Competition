@@ -1,0 +1,3 @@
+# The episode runner runs in the virtual environment of deploy/, whose
+# requirements already cover pytest.
+-r ../deploy/requirements.txt

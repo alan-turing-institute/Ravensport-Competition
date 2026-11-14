@@ -1,0 +1,328 @@
+#!/usr/bin/env python3
+"""The learning defender, an example entry for Track A (README.md).
+
+At each decision request the defender reads, through the query interface,
+every alert and every archived record of the security monitoring written since
+its previous read. It describes each record by a few tokens, strings such as
+`flow|fw-ext-dmz|ext0|ICMP|10.10.0.20|10.74.0.20|-` for a flow that packet
+inspection saw, and adds a token for each burst of records from one source.
+The model, model.json in the entry's volume, holds the number of benign steps
+in which each token appeared, learned offline from exported episodes
+(train.py). A token that benign operation seldom or never showed carries
+weight. The step's score sums, over the groups of tokens, the weight of each
+group's weightiest token, and the alarm rises when the score reaches the
+model's threshold.
+
+In training mode the entry's volume is writable, and the end notice carries
+the episode's R_n. At the end notice the defender then adds the episode's
+steps to the model when the episode was free of attack: when no alarm came
+and R_n is 0, a benign episode without a false alarm, or when its own alarm
+scored -1, a false alarm or an alarm before the first stage's release. In
+evaluation mode the volume is read-only and no step message carries a reward,
+so the defender reads no reward and learns nothing; an end notice without a
+reward never counts as free of attack. The reward never enters a decision
+within an episode (episodes.md §7, rule on the reward).
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import json
+import math
+import os
+import re
+import sys
+import tempfile
+from collections import Counter
+from collections.abc import Iterable, Iterator
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).resolve().parent
+# protocol.py lies beside this program in the entry's volume, and in
+# ../common in the repository.
+sys.path[:0] = [str(HERE), str(HERE.parent / "common")]
+
+import protocol  # noqa: E402
+
+MODEL = HERE / "model.json"
+TELEMETRY = HERE / "telemetry.json"
+INSPECTION = "/var/log/suricata/eve.json"
+CONNECTIONS = "/var/log/ulog/connections.json"
+LISTENING = "netstat listening ports"
+# A port at or above this one is an ephemeral port, which names no service.
+EPHEMERAL = 32768
+# The fewest records from one source in one step that make a volume token: a
+# burst, in powers of two from 32.
+BURST = 32
+# At most this many distinct tokens of one step are kept for learning.
+KEEP_PER_STEP = 2000
+_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", re.IGNORECASE)
+_HEX = re.compile(r"\b(?=[0-9a-f]*\d)[0-9a-f]{6,}\b", re.IGNORECASE)
+_NUMBER = re.compile(r"\d+")
+_SPACE = re.compile(r"\s+")
+
+
+def address(text: Any) -> str:
+    """An address as a token holds it: an IPv4 address as written, and a class
+    for an IPv6 address whose value depends on a hardware address, which
+    differs between deployments."""
+    if not isinstance(text, str) or not text:
+        return "-"
+    try:
+        ip = ipaddress.ip_address(text)
+    except ValueError:
+        return "?"
+    if ip.version == 4:
+        return str(ip)
+    if ip.is_link_local:
+        return "v6-link-local"
+    if ip.is_multicast:
+        # A solicited-node group derives from the host's own address.
+        return "v6-solicited-node" if str(ip).startswith("ff02::1:ff") else str(ip)
+    if ip.is_unspecified:
+        return "::"
+    return "v6-other"
+
+
+def port(protocol_name: Any, value: Any) -> str:
+    """A destination port as a token holds it: the port of a service, and a
+    class for an ephemeral port."""
+    if str(protocol_name).upper() not in ("TCP", "UDP", "6", "17"):
+        return "-"
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return "-"
+    return "ephemeral" if number >= EPHEMERAL else str(number)
+
+
+def template(text: Any, words: int = 10) -> str:
+    """A log message with its variable parts, identifiers, hexadecimal values
+    and numbers, replaced, and its terminal colour codes removed, cut to its
+    first words."""
+    text = _ESCAPE.sub("", str(text))
+    text = _NUMBER.sub("#", _HEX.sub("#", _UUID.sub("<id>", text)))
+    return " ".join(_SPACE.sub(" ", text).strip().split(" ")[:words])
+
+
+def _message(record: dict[str, Any]) -> str:
+    """The message of a journal line, after its program's name."""
+    line = str(record.get("full_log", ""))
+    _, _, rest = line.partition("]: ")
+    return rest if rest else line.split(": ", 1)[-1]
+
+
+def tokens(record: dict[str, Any]) -> Iterator[str]:
+    """The tokens that describe one record of alerts.json or archives.json."""
+    agent = str((record.get("agent") or {}).get("name", "-"))
+    location = str(record.get("location", "-"))
+    data = record.get("data") if isinstance(record.get("data"), dict) else {}
+    rule = record.get("rule")
+    if isinstance(rule, dict):
+        yield f"rule|{agent}|{rule.get('id')}"
+    if location == INSPECTION:
+        kind = data.get("event_type", "-")
+        if kind == "flow":
+            proto = data.get("proto", "-")
+            source, target = address(data.get("src_ip")), address(data.get("dest_ip"))
+            service = port(proto, data.get("dest_port"))
+            iface = data.get("in_iface", "-")
+            yield f"flow|{agent}|{iface}|{proto}|{source}|{target}|{service}"
+            yield f"peer|{source}"
+            yield f"peer|{target}"
+            flow = data.get("flow") if isinstance(data.get("flow"), dict) else {}
+            yield f"flow-end|{agent}|{iface}|{proto}|{flow.get('state')}|{flow.get('reason')}"
+        elif kind == "alert":
+            alert = data.get("alert") if isinstance(data.get("alert"), dict) else {}
+            yield f"ids|{agent}|{alert.get('signature_id')}"
+        else:
+            yield f"eve|{agent}|{kind}"
+    elif location == CONNECTIONS:
+        ip = data.get("ip") if isinstance(data.get("ip"), dict) else {}
+        oob = data.get("oob") if isinstance(data.get("oob"), dict) else {}
+        proto = ip.get("protocol", "-")
+        source, target = address(data.get("src_ip")), address(data.get("dest_ip"))
+        direction = str(oob.get("prefix", "-")).strip().rstrip(":")
+        yield f"conn|{agent}|{direction}|{proto}|{source}|{target}|{port(proto, data.get('dest_port'))}"
+        yield f"peer|{source}"
+        yield f"peer|{target}"
+    elif location == "journald":
+        program = (record.get("predecoder") or {}).get("program_name", "-")
+        yield f"log|{agent}|{program}|{template(_message(record))}"
+    elif location == LISTENING:
+        for line in str(record.get("full_log", "")).split("\n")[1:]:
+            fields = line.split()
+            if len(fields) >= 4:
+                process = fields[3].split("/", 1)[-1]
+                yield f"listen|{agent}|{fields[0]}|{fields[1]}|{process}"
+    elif location == "syscollector":
+        yield f"inventory|{agent}|{data.get('type')}|{data.get('operation_type')}"
+    elif location == "wazuh-agent" or location.startswith("wazuh-"):
+        yield f"manager|{agent}|{location}|{template(record.get('full_log', ''))}"
+    elif location.startswith("/"):
+        yield f"file|{agent}|{location}|{template(data.get('extra_data') or record.get('full_log', ''))}"
+    else:
+        # The output of a command that a Wazuh agent runs, such as df -P.
+        yield f"command|{agent}|{location}"
+
+
+def step_tokens(records: Iterable[dict[str, Any]]) -> Counter[str]:
+    """The tokens of one step's records with their counts, and a token for
+    each burst of records from one source, and from all, in powers of two."""
+    found: Counter[str] = Counter()
+    sources: Counter[str] = Counter()
+    for record in records:
+        found.update(tokens(record))
+        agent = str((record.get("agent") or {}).get("name", "-"))
+        sources[f"{agent}|{record.get('location', '-')}"] += 1
+    sources["all|all"] = sum(sources.values())
+    for source, n in sources.items():
+        if n >= BURST:
+            found[f"volume|{source}|{n.bit_length() - 1}"] += 1
+    return found
+
+
+def group(token: str) -> str:
+    """The group of a token: its kind and the host that it names first. A
+    step's score counts the weightiest token of each group, so that one
+    event that several tokens describe counts once for each host."""
+    kind, _, rest = token.partition("|")
+    return kind if kind == "peer" else f"{kind}|{rest.partition('|')[0]}"
+
+
+class Model:
+    """The number of benign steps in which each token appeared, and the
+    parameters of the score."""
+
+    def __init__(self, document: dict[str, Any]) -> None:
+        self.steps = int(document["steps"])
+        self.counts: dict[str, int] = dict(document["counts"])
+        # Additive smoothing of each token's frequency.
+        self.alpha = float(document["alpha"])
+        # A token weighs nothing once its frequency reaches q.
+        self.q = float(document["q"])
+        # The score of a step that raises the alarm.
+        self.threshold = float(document["threshold"])
+        self.trained = document.get("trained", {})
+
+    @classmethod
+    def load(cls, path: Path) -> Model:
+        with open(path, encoding="utf-8") as f:
+            return cls(json.load(f))
+
+    def document(self) -> dict[str, Any]:
+        return {
+            "steps": self.steps,
+            "alpha": self.alpha,
+            "q": self.q,
+            "threshold": self.threshold,
+            "trained": self.trained,
+            "counts": dict(sorted(self.counts.items())),
+        }
+
+    def save(self, path: Path) -> None:
+        """Write the model whole and replace the file in one step, so that a
+        stopped write leaves the previous model."""
+        fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".model.")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(self.document(), f, indent=1)
+            f.write("\n")
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, path)
+
+    def weight(self, token: str) -> float:
+        """The token's weight: 1 for a token that no benign step showed,
+        decreasing to 0 at a frequency of q."""
+        total = self.steps + 2 * self.alpha
+        frequency = (self.counts.get(token, 0) + self.alpha) / total
+        unseen = self.alpha / total
+        if frequency >= self.q:
+            return 0.0
+        return math.log(self.q / frequency) / math.log(self.q / unseen)
+
+    def score(self, found: Iterable[str]) -> tuple[float, list[tuple[float, str]]]:
+        """The step's score, the sum over the groups of the weight of each
+        group's weightiest token, and those tokens, weightiest first."""
+        best: dict[str, tuple[float, str]] = {}
+        for token in found:
+            w = self.weight(token)
+            if w > 0:
+                key = group(token)
+                if key not in best or w > best[key][0]:
+                    best[key] = (w, token)
+        top = sorted(best.values(), reverse=True)
+        return sum(w for w, _ in top), top[:5]
+
+    def learn(self, steps: Iterable[Iterable[str]]) -> int:
+        """Add benign steps, each given by its tokens. Returns their number."""
+        n = 0
+        for found in steps:
+            for token in set(found):
+                self.counts[token] = self.counts.get(token, 0) + 1
+            n += 1
+        self.steps += n
+        return n
+
+
+def attack_free(alarmed: bool, reward: float | None) -> bool:
+    """Whether an episode's steps, up to its alarm, were free of attack, from
+    the alarm and the episode's reward: a benign episode without a false
+    alarm scores 0, and an alarm scores -1 only as a false alarm or before
+    the first stage's release."""
+    if reward is None:
+        return False
+    return (not alarmed and reward == 0) or (alarmed and reward == -1)
+
+
+def writable(directory: Path) -> bool:
+    """Whether the entry's volume is writable, as in training mode."""
+    try:
+        with tempfile.TemporaryFile(dir=directory):
+            return True
+    except OSError:
+        return False
+
+
+def main() -> int:
+    model = Model.load(MODEL)
+    telemetry = protocol.Telemetry.load(str(TELEMETRY))
+    training = writable(HERE)
+    episode: list[list[str]] = []
+    alarmed = False
+
+    def decide(request: protocol.Request) -> bool:
+        nonlocal alarmed
+        records = protocol.read("alerts", telemetry=telemetry)
+        records += protocol.read("archives", telemetry=telemetry)
+        found = step_tokens(records)
+        if training:
+            episode.append(list(found)[:KEEP_PER_STEP])
+        score, top = model.score(found)
+        alarm = score >= model.threshold
+        if alarm and not alarmed:
+            alarmed = True
+            print(
+                f"defender: alarm at step {request.step}, score {score:.2f}: "
+                + "; ".join(f"{t} ({w:.2f})" for w, t in top),
+                file=sys.stderr,
+            )
+        return alarm
+
+    def end(notice: protocol.Request) -> None:
+        # The reward is read in training mode alone; in evaluation mode the
+        # end notice carries none.
+        if training and attack_free(alarmed, notice.previous_reward):
+            learned = model.learn(episode)
+            model.trained["online_steps"] = (
+                model.trained.get("online_steps", 0) + learned
+            )
+            model.save(MODEL)
+            print(f"defender: learned {learned} benign steps", file=sys.stderr)
+
+    return protocol.run(decide, end)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

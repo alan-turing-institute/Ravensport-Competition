@@ -1,0 +1,466 @@
+{
+  "schema_version": 2,
+  "generator": {
+    "crate_name": "attack-chains",
+    "crate_version": "0.1.0",
+    "selection": "distinct-stage-set",
+    "mock_build": false
+  },
+  "artifacts": [
+    {
+      "kind": "attack",
+      "binary": "it-foothold__disclose-account-inventory",
+      "foothold": {
+        "name": "it-foothold",
+        "facts": [
+          "Segment(It)"
+        ],
+        "initial_access_vectors": [
+          {
+            "name": "Spearphishing → stolen credential",
+            "weight": 0.2
+          },
+          {
+            "name": "Credential abuse / valid accounts",
+            "weight": 0.22
+          },
+          {
+            "name": "Web compromise of a corporate site",
+            "weight": 0.06
+          },
+          {
+            "name": "Insider with pre-existing valid access",
+            "weight": 0.04
+          }
+        ]
+      },
+      "endpoint": {
+        "code": "G4",
+        "name": "Exfiltration / espionage",
+        "description": "steal records, credentials, schemas",
+        "frequency_faithful_weight": 0.3,
+        "research_weighted_weight": 0.22
+      },
+      "impact_stage": "disclose-account-inventory",
+      "impact_facts": [
+        "LdapDirectoryAccountsDisclosed"
+      ],
+      "stages": [
+        {
+          "position": 1,
+          "name": "scan-it-segment",
+          "group": "Gather",
+          "skeleton": "5 Discovery",
+          "requires": [
+            "Segment(It)"
+          ],
+          "provides": [
+            "Ip(IdentityProvider)",
+            "Service(IdentityProvider, Ldap)",
+            "Service(IdentityProvider, Ntp)",
+            "Ip(ReconciliationWorkstation)",
+            "Service(ReconciliationWorkstation, Rdp)",
+            "Ip(SecurityMonitoringManager)",
+            "Service(SecurityMonitoringManager, WazuhApi)"
+          ]
+        },
+        {
+          "position": 2,
+          "name": "enumerate-directory",
+          "group": "Gather",
+          "skeleton": "5 Discovery",
+          "requires": [
+            "Segment(It)",
+            "Ip(IdentityProvider)",
+            "Service(IdentityProvider, Ldap)"
+          ],
+          "provides": [
+            "LdapDirectoryAccounts",
+            "LdapDirectoryManagerDn"
+          ]
+        },
+        {
+          "position": 3,
+          "name": "disclose-account-inventory",
+          "group": "Impact",
+          "skeleton": "8 Impact",
+          "requires": [
+            "LdapDirectoryAccounts"
+          ],
+          "provides": [
+            "LdapDirectoryAccountsDisclosed"
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "kind": "attack",
+      "binary": "external-informed__exfiltrate-inventory",
+      "foothold": {
+        "name": "external-informed",
+        "facts": [
+          "Segment(External)",
+          "Knows(Tls)"
+        ],
+        "initial_access_vectors": [
+          {
+            "name": "Exploit the internet-facing tank-gauge relay",
+            "weight": 0.3
+          },
+          {
+            "name": "Trusted relationship via the fuel supplier",
+            "weight": 0.14
+          }
+        ]
+      },
+      "endpoint": {
+        "code": "G4",
+        "name": "Exfiltration / espionage",
+        "description": "steal records, credentials, schemas",
+        "frequency_faithful_weight": 0.3,
+        "research_weighted_weight": 0.22
+      },
+      "impact_stage": "exfiltrate-inventory",
+      "impact_facts": [
+        "TankDataExfiltrated"
+      ],
+      "stages": [
+        {
+          "position": 1,
+          "name": "discover-gateway",
+          "group": "Gather",
+          "skeleton": "5 Discovery",
+          "requires": [
+            "Segment(External)"
+          ],
+          "provides": [
+            "Ip(ExternalSegmentGateway)",
+            "Mac(ExternalSegmentGateway)"
+          ]
+        },
+        {
+          "position": 2,
+          "name": "prove-raw-frame-tx",
+          "group": "Reach",
+          "skeleton": "2 Execution and foothold",
+          "requires": [
+            "Segment(External)"
+          ],
+          "provides": [
+            "RawFrameTx(External)"
+          ]
+        },
+        {
+          "position": 3,
+          "name": "prove-forged-frame-honoured",
+          "group": "Reach",
+          "skeleton": "2 Execution and foothold",
+          "requires": [
+            "Segment(External)",
+            "RawFrameTx(External)"
+          ],
+          "provides": [
+            "ForgedFrameHonoured(External)"
+          ]
+        },
+        {
+          "position": 4,
+          "name": "intercept-supplier-poll",
+          "group": "Gather",
+          "skeleton": "5 Discovery",
+          "requires": [
+            "Segment(External)",
+            "RawFrameTx(External)",
+            "ForgedFrameHonoured(External)",
+            "Ip(ExternalSegmentGateway)",
+            "Mac(ExternalSegmentGateway)"
+          ],
+          "provides": [
+            "Ip(Supplier)",
+            "Ip(Relay)",
+            "Service(Relay, Tls)"
+          ]
+        },
+        {
+          "position": 5,
+          "name": "exfiltrate-inventory",
+          "group": "Impact",
+          "skeleton": "8 Impact",
+          "requires": [
+            "Knows(Tls)",
+            "Segment(External)",
+            "Ip(Supplier)",
+            "Ip(Relay)",
+            "Ip(ExternalSegmentGateway)",
+            "Service(Relay, Tls)",
+            "RawFrameTx(External)",
+            "ForgedFrameHonoured(External)"
+          ],
+          "provides": [
+            "TankDataExfiltrated"
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "kind": "attack",
+      "binary": "it-foothold__exfiltrate-replica-telemetry-1",
+      "foothold": {
+        "name": "it-foothold",
+        "facts": [
+          "Segment(It)"
+        ],
+        "initial_access_vectors": [
+          {
+            "name": "Spearphishing → stolen credential",
+            "weight": 0.2
+          },
+          {
+            "name": "Credential abuse / valid accounts",
+            "weight": 0.22
+          },
+          {
+            "name": "Web compromise of a corporate site",
+            "weight": 0.06
+          },
+          {
+            "name": "Insider with pre-existing valid access",
+            "weight": 0.04
+          }
+        ]
+      },
+      "endpoint": {
+        "code": "G4",
+        "name": "Exfiltration / espionage",
+        "description": "steal records, credentials, schemas",
+        "frequency_faithful_weight": 0.3,
+        "research_weighted_weight": 0.22
+      },
+      "impact_stage": "exfiltrate-replica-telemetry",
+      "impact_facts": [
+        "DmzLogReplicaTelemetryExfiltrated"
+      ],
+      "stages": [
+        {
+          "position": 1,
+          "name": "scan-it-segment",
+          "group": "Gather",
+          "skeleton": "5 Discovery",
+          "requires": [
+            "Segment(It)"
+          ],
+          "provides": [
+            "Ip(IdentityProvider)",
+            "Service(IdentityProvider, Ldap)",
+            "Service(IdentityProvider, Ntp)",
+            "Ip(ReconciliationWorkstation)",
+            "Service(ReconciliationWorkstation, Rdp)",
+            "Ip(SecurityMonitoringManager)",
+            "Service(SecurityMonitoringManager, WazuhApi)"
+          ]
+        },
+        {
+          "position": 2,
+          "name": "enumerate-directory",
+          "group": "Gather",
+          "skeleton": "5 Discovery",
+          "requires": [
+            "Segment(It)",
+            "Ip(IdentityProvider)",
+            "Service(IdentityProvider, Ldap)"
+          ],
+          "provides": [
+            "LdapDirectoryAccounts",
+            "LdapDirectoryManagerDn"
+          ]
+        },
+        {
+          "position": 3,
+          "name": "spray-operator-credential",
+          "group": "Gather",
+          "skeleton": "4 Privilege escalation / credential access",
+          "requires": [
+            "Segment(It)",
+            "Ip(IdentityProvider)",
+            "Service(IdentityProvider, Ldap)",
+            "LdapDirectoryAccounts"
+          ],
+          "provides": [
+            "Grant(LdapDirectory(BindAs(DockOperator)))"
+          ]
+        },
+        {
+          "position": 4,
+          "name": "open-session-as-dock-operator",
+          "group": "Gather",
+          "skeleton": "6 Lateral movement",
+          "requires": [
+            "Segment(It)",
+            "Ip(ReconciliationWorkstation)",
+            "Service(ReconciliationWorkstation, Rdp)",
+            "Grant(LdapDirectory(BindAs(DockOperator)))"
+          ],
+          "provides": [
+            "Grant(ReconciliationWorkstation(InteractiveSessionAs(DockOperator)))"
+          ]
+        },
+        {
+          "position": 5,
+          "name": "harvest-grafana-credential-from-proc",
+          "group": "Gather",
+          "skeleton": "4 Privilege escalation / credential access",
+          "requires": [
+            "Segment(It)",
+            "Grant(ReconciliationWorkstation(InteractiveSession))"
+          ],
+          "provides": [
+            "Grant(DmzLogReplicaGrafana(Administrator))",
+            "Ip(DmzLogReplica)",
+            "Service(DmzLogReplica, Http)"
+          ]
+        },
+        {
+          "position": 6,
+          "name": "discover-it-gateway",
+          "group": "Gather",
+          "skeleton": "5 Discovery",
+          "requires": [
+            "Segment(It)"
+          ],
+          "provides": [
+            "Ip(ItSegmentGateway)",
+            "Mac(ItSegmentGateway)"
+          ]
+        },
+        {
+          "position": 7,
+          "name": "exfiltrate-replica-telemetry",
+          "group": "Impact",
+          "skeleton": "8 Impact",
+          "requires": [
+            "Segment(It)",
+            "Ip(ItSegmentGateway)",
+            "Ip(DmzLogReplica)",
+            "Service(DmzLogReplica, Http)",
+            "Grant(DmzLogReplicaGrafana(Administrator))"
+          ],
+          "provides": [
+            "DmzLogReplicaTelemetryExfiltrated"
+          ]
+        }
+      ],
+      "conditions": [
+        {
+          "id": "live-reconciliation-audit-observable",
+          "timing": "during-stage",
+          "stage": "harvest-grafana-credential-from-proc",
+          "description": "The reconciliation user must be logged into recon-01 and actively executing the credential-bearing replica retrieval command; that command must be observable to another workstation user through /proc."
+        }
+      ]
+    },
+    {
+      "kind": "attack",
+      "binary": "it-foothold__exfiltrate-operational-data-from-manager",
+      "foothold": {
+        "name": "it-foothold",
+        "facts": [
+          "Segment(It)"
+        ],
+        "initial_access_vectors": [
+          {
+            "name": "Spearphishing → stolen credential",
+            "weight": 0.2
+          },
+          {
+            "name": "Credential abuse / valid accounts",
+            "weight": 0.22
+          },
+          {
+            "name": "Web compromise of a corporate site",
+            "weight": 0.06
+          },
+          {
+            "name": "Insider with pre-existing valid access",
+            "weight": 0.04
+          }
+        ]
+      },
+      "endpoint": {
+        "code": "G4",
+        "name": "Exfiltration / espionage",
+        "description": "steal records, credentials, schemas",
+        "frequency_faithful_weight": 0.3,
+        "research_weighted_weight": 0.22
+      },
+      "impact_stage": "exfiltrate-operational-data-from-manager",
+      "impact_facts": [
+        "OperationalDataExfiltratedFromManager"
+      ],
+      "stages": [
+        {
+          "position": 1,
+          "name": "scan-it-segment",
+          "group": "Gather",
+          "skeleton": "5 Discovery",
+          "requires": [
+            "Segment(It)"
+          ],
+          "provides": [
+            "Ip(IdentityProvider)",
+            "Service(IdentityProvider, Ldap)",
+            "Service(IdentityProvider, Ntp)",
+            "Ip(ReconciliationWorkstation)",
+            "Service(ReconciliationWorkstation, Rdp)",
+            "Ip(SecurityMonitoringManager)",
+            "Service(SecurityMonitoringManager, WazuhApi)"
+          ]
+        },
+        {
+          "position": 2,
+          "name": "acquire-siem-management-credential",
+          "group": "Gather",
+          "skeleton": "4 Privilege escalation / credential access",
+          "requires": [
+            "Segment(It)",
+            "Ip(SecurityMonitoringManager)",
+            "Service(SecurityMonitoringManager, WazuhApi)"
+          ],
+          "provides": [
+            "Grant(SecurityMonitoring(ManagementApi))"
+          ]
+        },
+        {
+          "position": 3,
+          "name": "execute-on-siem-manager-via-command-wodle",
+          "group": "Prepare",
+          "skeleton": "2 Execution and foothold",
+          "requires": [
+            "Segment(It)",
+            "Ip(SecurityMonitoringManager)",
+            "Grant(SecurityMonitoring(ManagementApi))"
+          ],
+          "provides": [
+            "Grant(SecurityMonitoring(ManagerRoot))"
+          ]
+        },
+        {
+          "position": 4,
+          "name": "exfiltrate-operational-data-from-manager",
+          "group": "Impact",
+          "skeleton": "8 Impact",
+          "requires": [
+            "Segment(It)",
+            "Ip(SecurityMonitoringManager)",
+            "Grant(SecurityMonitoring(ManagerRoot))"
+          ],
+          "provides": [
+            "OperationalDataExfiltratedFromManager"
+          ]
+        }
+      ],
+      "conditions": []
+    }
+  ]
+}

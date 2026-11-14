@@ -1,0 +1,5 @@
+{
+  "reads": [
+    {"output": "archives", "host": "siem-01", "input": "/var/log/packetbeat/events.ndjson"}
+  ]
+}

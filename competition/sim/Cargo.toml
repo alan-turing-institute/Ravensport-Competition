@@ -1,0 +1,16 @@
+[package]
+name = "sim-competition"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The competition's entry point for sim-host (episode-runner-impl.md §1,
+# competition images): the simulator's own crate, started from the start-up
+# input that the episode runner supplies (episode-runner-impl.md §2, start-up
+# input). The versions follow infra/sim/Cargo.toml.
+[dependencies]
+sim = { path = "../../infra/sim" }
+serde_json = "1.0.150"
+time = { version = "0.3", features = ["macros", "formatting", "parsing"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

@@ -1,0 +1,12 @@
+
+<!-- The example Track A entry with Packetbeat (README.md): the Wazuh manager
+     reads Packetbeat's events, one JavaScript Object Notation (JSON) object
+     per line, with the packaged JSON decoder, so that each event lands in
+     archives.json under siem-01's name with this file as its input. The
+     image appends this block to the manager's ossec.conf. -->
+<ossec_config>
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/packetbeat/events.ndjson</location>
+  </localfile>
+</ossec_config>

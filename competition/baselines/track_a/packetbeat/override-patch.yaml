@@ -1,0 +1,17 @@
+# The entry's change to the competition's additional override file
+# (README.md, "Deployment"). override.py merges it into
+# competition/deploy/override.yaml and writes the entry's own version of that
+# file to dist/override.yaml: siem-01 is built by the entry's template, which
+# extends siem-01's competition template, under an image name of its own.
+# Every other value stays as the competition's file gives it.
+
+# Searched after deploy/build-scripts/. The path is from this file's directory;
+# override.py writes it from the output's. The directory holds the entry's
+# template of siem-01, and a link to each competition template that the
+# competition's file names, in competition/deploy/build-scripts/.
+template_dir: build-scripts
+
+nodes:
+  siem-01:
+    build_script: siem-01-packetbeat
+    image_name: ravensport/siem-01-packetbeat:latest

@@ -1,0 +1,49 @@
+# The competition's additional override file (deployment.md §7.3, additional
+# override file; episodes.md §3.4, competition image). EXTRA_OVERRIDE applies
+# it after the profile's override file. The file defines the compression
+# factor and the flow timeouts of packet inspection, gives siem-01 the
+# competition image (the operational image with the software that the
+# competition runs on siem-01), gives sim-host the competition image (the
+# operational image with the competition's entry point in place of the
+# simulator's own binary), and gives each firewall node its competition
+# firewall image.
+
+# The compression factor of a compressed scenario (episodes.md §5.2, the
+# compression factor), provisionally 5 for the competition release. This file
+# is the one place that defines it.
+compression_factor: 5
+
+# The flow timeouts of packet inspection on the firewall nodes, in seconds, by
+# protocol and flow state as Suricata's configuration names them (episodes.md
+# §5.3, timings). Every deployment profile keeps Suricata's packaged timeouts.
+# The timeouts change the firewall nodes' images, so the nodes below give each
+# firewall node an image name of its own.
+flow_timeouts:
+  tcp:
+    closed: 20
+    new: 30
+  udp:
+    established: 20
+  icmp:
+    established: 20
+
+# Searched after deploy/build-scripts/, relative to this file.
+template_dir: build-scripts
+
+nodes:
+  siem-01:
+    build_script: siem-01-competition
+    image_name: ravensport/siem-01-competition:latest
+  # The competition's entry point, which starts the simulator from the start-up
+  # input (episodes.md §3.4, competition image). `make images` builds the image
+  # whenever an additional override file applies.
+  sim-host:
+    image: ravensport/sim-competition:latest
+  # The competition firewall images, built by the operational build script
+  # with the flow timeouts above (episodes.md §3.4, competition image).
+  fw-ext-dmz:
+    image_name: ravensport/fw-ext-dmz-competition:latest
+  fw-dmz-it:
+    image_name: ravensport/fw-dmz-it-competition:latest
+  fw-ot-dmz:
+    image_name: ravensport/fw-ot-dmz-competition:latest

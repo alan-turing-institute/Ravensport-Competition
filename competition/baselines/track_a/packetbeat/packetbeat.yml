@@ -1,0 +1,87 @@
+# Packetbeat on siem-01, for the example Track A entry with Packetbeat
+# (README.md). Packetbeat reads siem-01's own network interface, and writes
+# one JavaScript Object Notation (JSON) object per line to its standard
+# output, which its systemd unit appends to /var/log/packetbeat/events.ndjson.
+# The Wazuh manager reads that file as a log input (localfile.xml), so each
+# event lands in archives.json. The entry's defender reads it there through
+# the query interface (episodes.md §8, query interface).
+
+packetbeat.interfaces:
+  # siem-01's one network interface, on the information technology (IT)
+  # segment (deploy/topology.yaml). The AF_PACKET socket leaves the
+  # interface's promiscuous mode off, since auto_promisc_mode is off by
+  # default.
+  - device: eth0
+    type: af_packet
+    # The packets that the filter passes, and no others:
+    # - every packet to Transmission Control Protocol (TCP) port 55000 of
+    #   siem-01, the Wazuh manager's management interface, or TCP port 1515,
+    #   its enrolment service, which this deployment leaves disabled
+    #   (siem.md §8.1, placement and firewall policy), and every packet from
+    #   those two ports of siem-01;
+    # - the opening packet of each connection to TCP port 1514 of siem-01,
+    #   the Wazuh agents' channel, so that the capture does not copy every
+    #   agent's records.
+    # Each clause names siem-01's address, 10.30.0.30 (deploy/topology.yaml),
+    # and the direction of its port. A scan of all of siem-01's ports
+    # therefore passes the packets of three ports, whatever source port the
+    # scan sends from; a filter of ports alone also passes every probe sent
+    # from source port 55000 or 1515.
+    bpf_filter: >-
+      (dst host 10.30.0.30 and (tcp dst port 55000 or tcp dst port 1515))
+      or (src host 10.30.0.30 and (tcp src port 55000 or tcp src port 1515))
+      or (dst host 10.30.0.30 and tcp dst port 1514
+      and tcp[tcpflags] & (tcp-syn|tcp-ack) == tcp-syn)
+    internal_networks:
+      - private
+
+# A flow event for each connection that the filter passes, every 5 seconds as
+# long as the connection carries packets, and a final event once it has
+# carried none for 10 seconds. A connection attempt of one packet therefore
+# appears within 5 seconds of that packet.
+packetbeat.flows:
+  timeout: 10s
+  period: 5s
+
+# The Transport Layer Security (TLS) handshake of each connection to the two
+# interfaces, which both serve TLS. The certificates stay out of the event.
+packetbeat.protocols:
+  - type: tls
+    ports: [55000, 1515]
+    send_certificates: false
+
+packetbeat.procs.enabled: false
+
+# Each event goes to the output as soon as it is published. The queue's
+# default holds events until 1,600 have accumulated or 10 seconds have passed.
+queue.mem:
+  events: 4096
+  flush.min_events: 1
+  flush.timeout: 0s
+
+# Fields that identify Packetbeat's own process and host. The archived record
+# names siem-01 already.
+processors:
+  - drop_fields:
+      fields: ["agent.ephemeral_id", "agent.id", "ecs", "host"]
+      ignore_missing: true
+
+output.console:
+  codec.json:
+    pretty: false
+
+# Packetbeat's own log goes to its files. The journal, which the Wazuh manager
+# reads too, receives none of it.
+logging.level: info
+logging.to_stderr: false
+logging.to_files: true
+logging.files:
+  path: /var/log/packetbeat
+  name: packetbeat
+  keepfiles: 7
+  permissions: 0640
+logging.metrics.enabled: false
+
+# No listening socket and no connection out of siem-01.
+http.enabled: false
+monitoring.enabled: false

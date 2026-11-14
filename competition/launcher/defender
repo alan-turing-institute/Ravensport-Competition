@@ -1,0 +1,54 @@
+#!/bin/sh
+# The launcher (episodes.md §7, step protocol; episode-runner-impl.md §1,
+# competition images). The step session runs this program as
+# `/usr/local/bin/defender PROGRAM`, where PROGRAM is the defender's program
+# that the episode runner's own test found just before. The launcher checks
+# the path again and replaces itself with the program through exec:
+# /var/lib/entry/defender, in the entry's storage volume, when that is a
+# regular file that siem-01 can read and execute, and the idle defender's
+# program when the path holds nothing. When the volume is present but siem-01
+# cannot read and search it, when the path holds anything else, such as a
+# file that is not executable or a directory, or when the launcher's check
+# finds another program than PROGRAM, the launcher writes the cause to its
+# standard error and exits with status 126, running no program. The episode
+# record therefore names exactly the program that ran. Before it replaces
+# itself, the launcher sets the working directory to /root, so the program
+# starts there however the step session opens. The program that replaces the
+# launcher holds the step session's standard input and output, and its exit
+# ends the step session.
+volume=/var/lib/entry
+entry=$volume/defender
+idle=/usr/local/bin/idle-defender
+fault() {
+    echo "launcher: $1" >&2
+    exit 126
+}
+if [ $# -lt 1 ]; then
+    echo "launcher: no program named, which the episode runner tests first" >&2
+    exit 2
+fi
+tested=$1
+shift
+cd /root || exit 1
+if [ -e "$volume" ] && { [ ! -d "$volume" ] || [ ! -r "$volume" ] || [ ! -x "$volume" ]; }; then
+    fault "$volume cannot be read and searched"
+fi
+if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
+    program=$idle
+elif [ -f "$entry" ] && [ -r "$entry" ] && [ -x "$entry" ]; then
+    program=$entry
+elif [ -d "$entry" ]; then
+    fault "$entry is a directory"
+elif [ ! -e "$entry" ]; then
+    fault "$entry is a symbolic link to nothing"
+elif [ ! -f "$entry" ]; then
+    fault "$entry is not a regular file"
+elif [ ! -r "$entry" ]; then
+    fault "$entry is not readable"
+else
+    fault "$entry is not executable"
+fi
+if [ "$program" != "$tested" ]; then
+    fault "the episode runner tested $tested, and the launcher found $program"
+fi
+exec "$program" "$@"

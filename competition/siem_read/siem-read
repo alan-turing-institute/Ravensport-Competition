@@ -1,0 +1,575 @@
+#!/usr/bin/env python3
+"""The query interface, first version (episodes.md §8, query interface;
+episode-runner-impl.md §12, query interface).
+
+    siem-read alerts|archives [--host NAME] [--input LOCATION] [--since TIME]
+
+writes the records of the security monitoring's output file, alerts.json or
+archives.json, that the Wazuh manager has written since the previous read with
+the same request. A record matches when its `agent.name` is NAME and its
+`location`, the log file or command from which the Wazuh agent collected it,
+is LOCATION, for each option given. The program writes each matching record
+to standard output as the file holds it, one JSON object per line, in the
+file's order, and exits with status 0.
+
+A request is the output file, the host, the input and the start, with the
+start taken as an instant to the microsecond, so two spellings of one instant
+name one request, and each request keeps a position of its own. Without
+--since, a request's first read starts at step 0, at the offsets that --start
+recorded. With --since TIME, a request reads the security monitoring's
+history: it starts at the first record whose timestamp is at or after TIME.
+The search runs through the dated files in the order of their days, and
+through each file's records in the file's order, from the earliest dated file
+whose day is not before TIME's day. A TIME before the first record therefore
+starts at that record, and when no record is at or after TIME, the request
+starts at the end of the current day's file. TIME is an instant in UTC such as
+2026-11-12T20:15:05.250000Z: a date and a time of day joined by T, an optional
+fraction of a second, of which the digits beyond the microsecond are dropped,
+and the suffix Z. A record's timestamp is its key `timestamp`, the instant at
+which the manager processed the record, on the clock of siem-01, such as
+"2026-11-12T20:15:05.217+0000", which the manager writes first in every record
+of both files.
+
+    siem-read --start [--step-0 TIME] [--step-s SECONDS]
+
+which the episode runner runs at the start of step 0, records for each output
+file its dated file and the offset after its last whole record, step 0's
+instant and the step duration, 5 seconds unless given. Step 0's instant is
+TIME, in the form that --since takes, which the episode runner gives from
+its clock, the clock that siem-01 shares, so that a read's step
+counts from step 0's boundary and not from the option's own run; without
+--step-0 it is the option's run time. The option also starts a new record of
+reads. A read before --start has run exits with status 2.
+
+The Wazuh manager writes each day's records into a dated file, such as
+alerts/2026/Nov/ossec-alerts-12.json below /var/ossec/logs, and alerts.json and
+archives.json are second names for the current day's dated files (siem.md §7,
+retention). A read reads the rest of the dated file at which the request's
+previous read stopped, and every later dated file up to the current day's,
+each from its start. Once the manager has compressed an earlier day's file,
+its content comes from the compressed file. A record that the manager is
+still writing waits for the next read, and a read returns no record that the
+manager wrote after the read began.
+
+Each read appends one JSON object to the record of reads,
+/var/lib/siem-read/reads.jsonl: the read's step and time, the request with its
+start, each dated file with the byte range read, and the number of records
+returned. A dated file is named by its path below /var/ossec/logs, without the
+suffix .gz, and a byte range counts in the file's decompressed content. The
+records that a read returned are therefore the records of its ranges that
+match its host and input, and each read replays exactly against the exported
+dated files.
+
+A request that the program cannot serve exits with status 2 and a message on
+standard error: one with an unknown file or option, or a TIME that is not in
+the form above or lies after the read on the clock of siem-01.
+"""
+
+import argparse
+import contextlib
+import fcntl
+import gzip
+import json
+import math
+import os
+import re
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+LOGS = Path("/var/ossec/logs")
+STATE = Path("/var/lib/siem-read")
+STEP_S = 5.0
+# Each output file: its directory below LOGS, the current file's name there,
+# and the prefix of the dated files' names.
+OUTPUTS = {
+    "alerts": ("alerts", "alerts.json", "ossec-alerts-"),
+    "archives": ("archives", "archives.json", "ossec-archive-"),
+}
+# The manager's directory of each month, such as 2026/Nov.
+MONTHS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
+STATE_FILE = "state.json"
+READS = "reads.jsonl"
+LOCK = "lock"
+CHUNK = 65536
+EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# An instant in UTC as --since and --step-0 take it, such as
+# 2026-11-12T20:15:05.250000Z.
+UTC_FORM = re.compile(r"\A(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z\Z")
+# A record's key `timestamp`, which the manager writes first in every record.
+# A record that holds the key elsewhere is read as JSON.
+TIMESTAMP = re.compile(rb'\{"timestamp":"([^"]*)"')
+# The longest time from a record's timestamp to its writing that the search
+# for a request's start allows. A binary search of the records' timestamps
+# finds a record whose timestamp is more than WRITE_LAG_S before TIME, so that
+# every record before it was written, and stamped, before TIME, and the search
+# for the first record at or after TIME goes on from there. The manager writes
+# a record within about a second of its timestamp: among 1,281,993 records of
+# archives.json exported on 12 November, no record's timestamp came more than
+# 1.09 seconds before that of a record written earlier.
+WRITE_LAG_S = 300
+
+
+class Unserved(Exception):
+    """A request that the program cannot serve."""
+
+
+def utc_text(t):
+    """A time on this host's clock in UTC to the microsecond, such as
+    2026-11-12T20:15:05.250000Z."""
+    return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def utc_instant(text):
+    """The instant of a time in the form of --since and --step-0, such as
+    2026-11-12T20:15:05.250000Z, in whole microseconds since the epoch, with
+    the digits of the fraction beyond the microsecond dropped, or None for a
+    text in any other form."""
+    found = UTC_FORM.match(text)
+    if found is None:
+        return None
+    try:
+        at = datetime.strptime(found.group(1), "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+    delta = at.replace(tzinfo=timezone.utc) - EPOCH
+    fraction = (found.group(2) or "")[:6].ljust(6, "0")
+    return (delta.days * 86_400 + delta.seconds) * 1_000_000 + int(fraction)
+
+
+def instant(text):
+    """A record's timestamp, a time with its offset from UTC such as
+    2026-11-12T20:15:05.217+0000, in whole microseconds since the epoch, or
+    None for any other text."""
+    try:
+        at = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if at.tzinfo is None:
+        return None
+    delta = at - EPOCH
+    return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
+
+
+def instant_text(micros):
+    """An instant in microseconds since the epoch, in UTC such as
+    2026-11-12T20:15:05.250000Z."""
+    at = EPOCH + timedelta(microseconds=micros)
+    return at.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def record_time(line):
+    """The instant of a record's key `timestamp`, in microseconds since the
+    epoch, or None for a record without one."""
+    found = TIMESTAMP.match(line)
+    if found is not None:
+        return instant(found.group(1).decode("ascii", "replace"))
+    try:
+        record = json.loads(line)
+    except ValueError:
+        return None
+    stamp = record.get("timestamp") if isinstance(record, dict) else None
+    return instant(stamp) if isinstance(stamp, str) else None
+
+
+def dated_files(logs, output):
+    """Every dated file of the output, compressed or not, oldest first: its
+    day as (year, month, day) and its path below logs without the suffix
+    .gz."""
+    directory, _, prefix = OUTPUTS[output]
+    found = {}
+    base = logs / directory
+    years = [d for d in base.iterdir() if d.is_dir() and d.name.isdigit()]
+    for year in years:
+        for month in year.iterdir():
+            if not (month.is_dir() and month.name in MONTHS):
+                continue
+            for path in month.iterdir():
+                name = (
+                    path.name[: -len(".gz")] if path.name.endswith(".gz") else path.name
+                )
+                day = name[len(prefix) : -len(".json")]
+                if not (
+                    name.startswith(prefix) and name.endswith(".json") and day.isdigit()
+                ):
+                    continue
+                key = (int(year.name), MONTHS.index(month.name) + 1, int(day))
+                found[key] = (month / name).relative_to(logs).as_posix()
+    return [(key, found[key]) for key in sorted(found)]
+
+
+def dated_file(logs, output):
+    """The dated file of the output's current file, by its path below logs:
+    the file that is the current file, newest months first."""
+    directory, current, prefix = OUTPUTS[output]
+    try:
+        seen = (logs / directory / current).stat()
+    except FileNotFoundError:
+        raise Unserved(f"{logs / directory / current} does not exist") from None
+    years = sorted(
+        (d for d in (logs / directory).iterdir() if d.is_dir() and d.name.isdigit()),
+        key=lambda d: int(d.name),
+        reverse=True,
+    )
+    for year in years:
+        months = sorted(
+            (d for d in year.iterdir() if d.is_dir() and d.name in MONTHS),
+            key=lambda d: MONTHS.index(d.name),
+            reverse=True,
+        )
+        for month in months:
+            for path in month.iterdir():
+                if not (path.name.startswith(prefix) and path.name.endswith(".json")):
+                    continue
+                found = path.stat()
+                if (found.st_dev, found.st_ino) == (seen.st_dev, seen.st_ino):
+                    return path.relative_to(logs).as_posix()
+    raise Unserved(f"no dated file below {logs / directory} is {current}")
+
+
+@contextlib.contextmanager
+def opened(logs, name):
+    """The dated file `name`, as the manager wrote it or, once compressed,
+    decompressed."""
+    path = logs / name
+    try:
+        f = open(path, "rb")
+    except FileNotFoundError:
+        try:
+            f = gzip.open(f"{path}.gz", "rb")
+        except FileNotFoundError:
+            raise Unserved(f"{name} no longer exists, compressed or not") from None
+    with f:
+        yield f
+
+
+def lines_from(logs, name, offset, limit=None):
+    """Each whole record of the dated file `name` from offset on, and before
+    the byte `limit` where it is given. A last line without its newline, which
+    the manager is still writing, is left for a later read."""
+    with opened(logs, name) as f:
+        f.seek(offset)
+        remaining = None if limit is None else max(0, limit - offset)
+        buffer = b""
+        while remaining is None or remaining > 0:
+            data = f.read(CHUNK if remaining is None else min(CHUNK, remaining))
+            if not data:
+                break
+            if remaining is not None:
+                remaining -= len(data)
+            buffer += data
+            cut = buffer.rfind(b"\n")
+            if cut < 0:
+                continue
+            whole, buffer = buffer[:cut], buffer[cut + 1 :]
+            for line in whole.split(b"\n"):
+                yield line + b"\n"
+
+
+def whole_end(path, size):
+    """The offset after the last whole record within the first size bytes of
+    the file at path."""
+    with open(path, "rb") as f:
+        end = size
+        while end > 0:
+            begin = max(0, end - CHUNK)
+            f.seek(begin)
+            newline = f.read(end - begin).rfind(b"\n")
+            if newline >= 0:
+                return begin + newline + 1
+            end = begin
+    return 0
+
+
+def search(logs, name, bound):
+    """The offset in the dated file `name` of a record whose timestamp comes
+    before bound, as late in the file as a binary search over the records'
+    timestamps finds it, or 0. A compressed file is searched from its start.
+    Every record before that offset was written before bound plus
+    WRITE_LAG_S."""
+    try:
+        f = open(logs / name, "rb")
+    except FileNotFoundError:
+        return 0
+    with f:
+        lo, hi = 0, os.fstat(f.fileno()).st_size
+        while hi - lo > CHUNK:
+            mid = (lo + hi) // 2
+            f.seek(mid)
+            f.readline()
+            at = f.tell()
+            line = f.readline()
+            if at >= hi or not line.endswith(b"\n"):
+                hi = mid
+                continue
+            stamp = record_time(line)
+            if stamp is not None and stamp < bound:
+                lo = at
+            else:
+                hi = mid
+    return lo
+
+
+def since_start(logs, output, since, current, limit):
+    """The start of a request with --since TIME, since in microseconds: the
+    first record whose timestamp is at or after TIME, through the dated files
+    from the earliest whose day is not before TIME's day, in the order of
+    their days, and through each file's records in the file's order; or the
+    end of the current day's file, as far as limit, when no record is at or
+    after TIME."""
+    at = EPOCH + timedelta(microseconds=since)
+    day = (at.year, at.month, at.day)
+    for key, name in dated_files(logs, output):
+        if key < day:
+            continue
+        offset = (
+            search(logs, name, since - WRITE_LAG_S * 1_000_000) if key == day else 0
+        )
+        for line in lines_from(logs, name, offset, limit if name == current else None):
+            stamp = record_time(line)
+            if stamp is not None and stamp >= since:
+                return {"file": name, "offset": offset}
+            offset += len(line)
+        if name == current:
+            break
+    return {"file": current, "offset": whole_end(logs / current, limit)}
+
+
+def matches(line, host, location):
+    """Whether a record matches the request's host and input, for each of
+    them given."""
+    if host is None and location is None:
+        return True
+    try:
+        record = json.loads(line)
+    except ValueError:
+        return False
+    if not isinstance(record, dict):
+        return False
+    agent = record.get("agent")
+    if host is not None and (not isinstance(agent, dict) or agent.get("name") != host):
+        return False
+    return location is None or record.get("location") == location
+
+
+def request_key(output, host, location, since):
+    return json.dumps([output, host, location, since])
+
+
+@contextlib.contextmanager
+def locked(state, create):
+    """The state directory, held against every other run of the program."""
+    if create:
+        state.mkdir(parents=True, exist_ok=True)
+    elif not (state / STATE_FILE).is_file():
+        raise Unserved("no offsets are recorded: siem-read --start has not run")
+    with open(state / LOCK, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def load(state):
+    try:
+        return json.loads((state / STATE_FILE).read_text())
+    except (FileNotFoundError, ValueError) as error:
+        raise Unserved(f"the recorded offsets cannot be read: {error}") from None
+
+
+def save(state, document):
+    path = state / STATE_FILE
+    temporary = path.with_name(path.name + ".new")
+    temporary.write_text(json.dumps(document, indent=2) + "\n")
+    os.replace(temporary, path)
+
+
+def start(logs, state, step_s, now, step_0=None):
+    """Record each output file's dated file and the offset after its last
+    whole record, step 0's instant, the step duration and the option's own
+    run time, and start a new record of reads. Step 0's instant is step_0
+    when given, and the run time otherwise."""
+    step_0 = now if step_0 is None else step_0
+    offsets = {}
+    for output in OUTPUTS:
+        name = dated_file(logs, output)
+        path = logs / name
+        offsets[output] = {
+            "file": name,
+            "size": path.stat().st_size,
+            "offset": whole_end(path, path.stat().st_size),
+        }
+    save(
+        state,
+        {
+            "step_0": step_0,
+            "step_0_time": utc_text(step_0),
+            "step_s": step_s,
+            "started_time": utc_text(now),
+            "start": offsets,
+            "requests": {},
+        },
+    )
+    (state / READS).write_text("")
+
+
+def read(logs, state, output, host, location, since, now, emit):
+    """Pass each matching record since the request's previous read to emit,
+    and return the read's entry in the record of reads and the state that the
+    read leaves. since is the request's start in microseconds since the
+    epoch, or None for a request that starts at step 0."""
+    document = load(state)
+    begun = document.get("start", {}).get(output)
+    if begun is None:
+        raise Unserved(f"no offset is recorded for {output}")
+    if since is not None and since > now * 1_000_000:
+        raise Unserved(
+            f"--since {instant_text(since)} lies after the read, at {utc_text(now)}"
+        )
+    since_text = None if since is None else instant_text(since)
+    key = request_key(output, host, location, since_text)
+    current = dated_file(logs, output)
+    # The current file as the read finds it, so that the read returns no
+    # record written after it began.
+    limit = (logs / current).stat().st_size
+    position = document["requests"].get(key)
+    if position is None:
+        position = (
+            begun if since is None else since_start(logs, output, since, current, limit)
+        )
+    names = [name for _, name in dated_files(logs, output)]
+    if position["file"] not in names:
+        raise Unserved(f"{position['file']} no longer exists, compressed or not")
+    first, last = names.index(position["file"]), names.index(current)
+    if first > last:
+        raise Unserved(f"{position['file']} comes after the current file, {current}")
+    names = names[first : last + 1]
+    ranges, records = [], 0
+    for n, name in enumerate(names):
+        offset = position["offset"] if n == 0 else 0
+        end = offset
+        for line in lines_from(logs, name, offset, limit if name == current else None):
+            end += len(line)
+            if matches(line, host, location):
+                emit(line)
+                records += 1
+        ranges.append({"file": name, "start": offset, "end": end})
+    document["requests"][key] = {
+        "file": ranges[-1]["file"],
+        "offset": ranges[-1]["end"],
+    }
+    entry = {
+        "step": math.floor((now - document["step_0"]) / document["step_s"]),
+        "time": utc_text(now),
+        "request": {
+            "output": output,
+            "host": host,
+            "input": location,
+            "since": since_text,
+        },
+        "ranges": ranges,
+        "records": records,
+    }
+    return entry, document
+
+
+def main(argv=None, *, logs=LOGS, state=STATE, now=time.time, stdout=None):
+    parser = argparse.ArgumentParser(
+        prog="siem-read",
+        description="Read the security monitoring's alerts or archived records "
+        "written since the previous read with the same request.",
+    )
+    parser.add_argument("output", nargs="?", help="alerts or archives")
+    parser.add_argument("--host", help="only records whose agent.name is NAME")
+    parser.add_argument(
+        "--input", dest="location", help="only records whose location is LOCATION"
+    )
+    parser.add_argument(
+        "--since",
+        help="the request's start: the first record whose timestamp is at or "
+        "after TIME, in UTC such as 2026-11-12T20:15:05.250000Z (default: step 0)",
+    )
+    parser.add_argument(
+        "--start",
+        action="store_true",
+        help="record where the reads start, at the start of step 0",
+    )
+    parser.add_argument(
+        "--step-0",
+        help="with --start, step 0's instant in UTC, such as "
+        "2026-11-12T20:15:05.250000Z (default: the option's run time)",
+    )
+    parser.add_argument(
+        "--step-s",
+        type=float,
+        help=f"with --start, the step duration (default {STEP_S:g})",
+    )
+    args = parser.parse_args(argv)
+    step_0 = since = None
+    if args.start:
+        if (
+            args.output
+            or args.host is not None
+            or args.location is not None
+            or args.since is not None
+        ):
+            parser.error("--start takes no request")
+        if args.step_s is not None and not args.step_s > 0:
+            parser.error("--step-s takes a positive number of seconds")
+        if args.step_0 is not None:
+            given = utc_instant(args.step_0)
+            if given is None:
+                parser.error(f"--step-0 takes a time in UTC, not {args.step_0!r}")
+            step_0 = given / 1_000_000
+    else:
+        if args.output not in OUTPUTS:
+            parser.error(f"a read names {' or '.join(OUTPUTS)}, not {args.output!r}")
+        if args.step_s is not None or args.step_0 is not None:
+            parser.error("--step-0 and --step-s go with --start")
+        if args.since is not None:
+            since = utc_instant(args.since)
+            if since is None:
+                parser.error(f"--since takes a time in UTC, not {args.since!r}")
+    out = stdout if stdout is not None else sys.stdout.buffer
+    try:
+        with locked(state, create=args.start):
+            if args.start:
+                start(logs, state, args.step_s or STEP_S, now(), step_0)
+                return 0
+            try:
+                entry, document = read(
+                    logs,
+                    state,
+                    args.output,
+                    args.host,
+                    args.location,
+                    since,
+                    now(),
+                    out.write,
+                )
+                out.flush()
+            except BrokenPipeError:
+                return 1
+            save(state, document)
+            with open(state / READS, "a") as reads:
+                reads.write(json.dumps(entry) + "\n")
+    except Unserved as error:
+        print(f"siem-read: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

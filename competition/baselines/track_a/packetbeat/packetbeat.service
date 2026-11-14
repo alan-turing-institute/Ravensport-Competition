@@ -1,0 +1,29 @@
+# Packetbeat on siem-01, for the example Track A entry with Packetbeat
+# (README.md). Packetbeat writes its events to its standard output, which
+# systemd appends to the file that the Wazuh manager reads (localfile.xml).
+# The image creates that file empty, so it exists before the Wazuh manager
+# starts. Packetbeat's own log goes to its files in /var/log/packetbeat, and
+# any output on its standard error to the journal.
+[Unit]
+Description=Packetbeat capture of the Wazuh manager's interfaces
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/packetbeat --environment systemd \
+    -c /etc/packetbeat/packetbeat.yml \
+    --path.home /usr/local/share/packetbeat \
+    --path.config /etc/packetbeat \
+    --path.data /var/lib/packetbeat \
+    --path.logs /var/log/packetbeat
+StandardOutput=append:/var/log/packetbeat/events.ndjson
+StandardError=journal
+# An AF_PACKET socket needs CAP_NET_RAW and no other capability.
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=yes
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,59 @@
+{# The image of siem-01 for the example Track A entry with Packetbeat
+   (README.md, "Deployment"): siem-01's competition image, with Packetbeat,
+   its configuration and its systemd unit, and the Wazuh manager's log input
+   for Packetbeat's events. The competition image's build runs unchanged, and
+   these blocks add to its own. Paths are relative to deploy/, where the
+   rendered script runs; ARTEFACT_ARCH, from _artefacts.sh.j2, names the build
+   host's architecture. #}
+{% extends "siem-01-competition.sh.j2" %}
+{% set entry = "../competition/baselines/track_a/packetbeat" %}
+{% set binary = "packetbeat-oss-9.5.5-linux-$ARTEFACT_ARCH" %}
+{# Each block's own lines come before the competition template's, which end
+   with a newline, so that no empty line breaks the command they continue. #}
+{% block extra_hash_inputs %}
+    {{ entry }}/packetbeat.sha256 \
+    {{ entry }}/packetbeat.yml \
+    {{ entry }}/packetbeat.service \
+    {{ entry }}/localfile.xml \
+    "{{ entry }}/dist/{{ binary }}" \
+{{ super() }}{% endblock %}
+{% block extra_files %}
+{{ super() }}
+# Packetbeat, as the entry's build of it, checked against the digests that the
+# entry records (README.md, "Building Packetbeat").
+( cd {{ entry }}/dist && grep " {{ binary }}\$" ../packetbeat.sha256 | sha256sum -c - )
+incus exec "$BUILD_CTR" -- install -d -m 0755 /etc/packetbeat /usr/local/share/packetbeat
+incus exec "$BUILD_CTR" -- install -d -m 0750 /var/lib/packetbeat /var/log/packetbeat
+# Every push names root as the owner: incus file push keeps the source file's
+# owner otherwise, the build machine's user, and Packetbeat refuses a
+# configuration file that root does not own.
+incus file push --uid 0 --gid 0 --mode 0755 "{{ entry }}/dist/{{ binary }}" \
+    "$BUILD_CTR/usr/local/bin/packetbeat"
+incus file push --uid 0 --gid 0 --mode 0600 {{ entry }}/packetbeat.yml \
+    "$BUILD_CTR/etc/packetbeat/packetbeat.yml"
+incus file push --uid 0 --gid 0 --mode 0644 {{ entry }}/packetbeat.service \
+    "$BUILD_CTR/etc/systemd/system/packetbeat.service"
+# The configuration must load, and the binary must run on this architecture.
+# Neither check writes Packetbeat's own log, so the image holds none of it.
+incus exec "$BUILD_CTR" -- /usr/local/bin/packetbeat version \
+    -E logging.to_files=false
+incus exec "$BUILD_CTR" -- /usr/local/bin/packetbeat test config \
+    -c /etc/packetbeat/packetbeat.yml -E logging.to_files=false \
+    --path.data /tmp/packetbeat-check --path.logs /tmp/packetbeat-check
+incus exec "$BUILD_CTR" -- rm -rf /tmp/packetbeat-check
+# The file that the systemd unit appends Packetbeat's events to, empty, so that
+# the Wazuh manager's log input finds it at the manager's first start, and
+# nothing else in Packetbeat's directories.
+incus exec "$BUILD_CTR" -- find /var/log/packetbeat /var/lib/packetbeat -mindepth 1 -delete
+incus exec "$BUILD_CTR" -- install -m 0640 /dev/null /var/log/packetbeat/events.ndjson
+# The Wazuh manager's log input for the events (localfile.xml), as a block of
+# its own after the configuration's existing blocks.
+incus file push --uid 0 --gid 0 {{ entry }}/localfile.xml \
+    "$BUILD_CTR/tmp/packetbeat-localfile.xml"
+incus exec "$BUILD_CTR" -- sh -c \
+    'cat /tmp/packetbeat-localfile.xml >> /var/ossec/etc/ossec.conf && rm /tmp/packetbeat-localfile.xml'
+incus exec "$BUILD_CTR" -- grep -q '<location>/var/log/packetbeat/events.ndjson</location>' \
+    /var/ossec/etc/ossec.conf
+incus exec "$BUILD_CTR" -- systemctl daemon-reload
+incus exec "$BUILD_CTR" -- systemctl enable packetbeat.service
+{% endblock %}

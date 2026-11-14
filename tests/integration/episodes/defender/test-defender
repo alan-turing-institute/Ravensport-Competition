@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""The integration suite's test defender (episodes-tests.md §0.2, a test
+defender).
+
+The suite places this program as `defender` in the entry's storage volume,
+/var/lib/entry on siem-01, from which the launcher runs it, with its script
+beside it in /var/lib/entry/script.json. The script's `alarm_at` is the step
+at which the defender raises the Track A alarm, or null; every other decision
+request is answered with no action. With `read` true, the defender reads
+archives.json through the query interface before each decision, as an entry
+does. With `read` true and a number `since_s`, the defender also reads the
+history at step 0: archives.json from the instant `since_s` seconds before its
+own clock at step 0's decision request, through `siem-read archives --since`.
+
+The defender notes the processes at its start, each step message it
+receives, and each read with the digest of what the read returned. The notes
+go to /root/test-defender.jsonl, in its working directory, since the volume is
+read-only at fork 0, for the suite to read before the reset. The script's
+`log` names another path: in training mode the volume is read-write, and notes
+in it return with the training volume to the living port's manager.
+"""
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+ENTRY = "/var/lib/entry"
+LOG = "/root/test-defender.jsonl"
+LAUNCHER = "/usr/local/bin/defender"
+SIEM_READ = "/usr/local/bin/siem-read"
+
+
+def command_lines():
+    """Each process's arguments, by process identifier."""
+    lines = {}
+    for entry in os.listdir("/proc"):
+        if entry.isdigit():
+            try:
+                with open(f"/proc/{entry}/cmdline", "rb") as f:
+                    lines[int(entry)] = f.read().decode(errors="replace").split("\0")
+            except OSError:
+                pass
+    return lines
+
+
+def main():
+    with open(os.path.join(ENTRY, "script.json")) as f:
+        script = json.load(f)
+    log = open(script.get("log") or LOG, "a")
+
+    def note(**fields):
+        log.write(json.dumps(fields) + "\n")
+        log.flush()
+
+    processes = command_lines()
+    note(
+        event="start",
+        pid=os.getpid(),
+        uid=os.getuid(),
+        cwd=os.getcwd(),
+        argv=processes.get(os.getpid(), []),
+        launchers=[pid for pid, argv in processes.items() if LAUNCHER in argv],
+    )
+    for line in sys.stdin:
+        message = json.loads(line)
+        note(event="message", message=message)
+        if message["ended"]:
+            return 0
+        if script.get("read"):
+            requests = [[SIEM_READ, "archives"]]
+            since_s = script.get("since_s")
+            if message["step"] == 0 and since_s is not None:
+                at = datetime.fromtimestamp(time.time() - since_s, timezone.utc)
+                since = at.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                requests.append([SIEM_READ, "archives", "--since", since])
+            for argv in requests:
+                read = subprocess.run(
+                    argv,
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    check=False,
+                )
+                note(
+                    event="read",
+                    step=message["step"],
+                    argv=argv[1:],
+                    status=read.returncode,
+                    sha256=hashlib.sha256(read.stdout).hexdigest(),
+                    records=read.stdout.count(b"\n"),
+                )
+        decision = "alarm" if message["step"] == script.get("alarm_at") else "no action"
+        sys.stdout.write(json.dumps({"decision": decision}) + "\n")
+        sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

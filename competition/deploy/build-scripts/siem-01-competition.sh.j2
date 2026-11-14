@@ -1,0 +1,20 @@
+{# The competition image of siem-01 (episodes.md §3.4, competition image). The
+   operational image's build runs unchanged, and the blocks add the
+   competition's software before the image is published. Paths are relative to
+   deploy/, where the rendered script runs. #}
+{% extends "siem-01.sh.j2" %}
+{% block extra_hash_inputs %}
+    ../competition/idle_defender/idle-defender \
+    ../competition/launcher/defender \
+    ../competition/siem_read/siem-read \
+{% endblock %}
+{% block extra_files %}
+# The idle defender's program, the launcher that the step session runs, and
+# the query interface (episodes.md §7, step protocol; §8, query interface).
+incus file push --mode 0755 ../competition/idle_defender/idle-defender \
+    "$BUILD_CTR/usr/local/bin/idle-defender"
+incus file push --mode 0755 ../competition/launcher/defender \
+    "$BUILD_CTR/usr/local/bin/defender"
+incus file push --mode 0755 ../competition/siem_read/siem-read \
+    "$BUILD_CTR/usr/local/bin/siem-read"
+{% endblock %}

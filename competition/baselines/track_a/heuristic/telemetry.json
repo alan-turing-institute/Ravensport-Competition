@@ -1,0 +1,6 @@
+{
+  "reads": [
+    {"output": "alerts"},
+    {"output": "archives", "input": "/var/log/suricata/eve.json"}
+  ]
+}

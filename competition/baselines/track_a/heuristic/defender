@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""The heuristic defender, an example entry for Track A (README.md).
+
+At each decision request the defender reads, through the query interface, the
+alerts of the security monitoring and the records of packet inspection on the
+three firewall nodes, and raises the Track A alarm when either of two rules
+holds:
+
+1. an alert has a rule level of MIN_LEVEL or above;
+2. a record of packet inspection names an IPv4 address that the port's address
+   plan does not hold.
+
+The rules keep no state between steps, so the defender needs no storage.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import sys
+from collections.abc import Iterable, Iterator
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).resolve().parent
+# protocol.py lies beside this program in the entry's volume, and in
+# ../common in the repository.
+sys.path[:0] = [str(HERE), str(HERE.parent / "common")]
+
+import protocol  # noqa: E402
+
+TELEMETRY = HERE / "telemetry.json"
+# The input of packet inspection's records: Suricata's event log on each
+# firewall node, which the node's Wazuh agent forwards (siem.md §4.2).
+INSPECTION = "/var/log/suricata/eve.json"
+# The lowest rule level that raises the alarm: one above the highest level of
+# any alert in benign operation, the start-up of a living port included
+# (README.md, "Tuning").
+MIN_LEVEL = 8
+# The port's address plan: each IPv4 address that deploy/topology.yaml gives a
+# node of the port, with the node. The adversary host is not part of the port,
+# and the plan leaves it out.
+ADDRESS_PLAN = {
+    "10.10.0.2": "fw-ext-dmz",
+    "10.10.0.10": "sim-host (fuel supplier)",
+    "10.20.0.2": "fw-ext-dmz",
+    "10.20.0.3": "fw-dmz-it",
+    "10.20.0.4": "fw-ot-dmz",
+    "10.20.0.10": "atg-relay-01",
+    "10.20.0.20": "hist-dmz-01",
+    "10.20.0.30": "dmz-bastion-01",
+    "10.30.0.2": "fw-dmz-it",
+    "10.30.0.10": "recon-01",
+    "10.30.0.11": "sim-host (reconciliation user)",
+    "10.30.0.12": "sim-host (systems administrator)",
+    "10.30.0.20": "corp-it",
+    "10.30.0.30": "siem-01",
+    "10.30.0.40": "admin-01",
+    "10.40.0.2": "fw-ot-dmz",
+    "10.40.0.10": "fms-01",
+    "10.40.0.11": "hist-01",
+    "10.40.0.12": "hmi-01",
+    "10.40.0.51": "sim-host (tank gauge)",
+    "10.40.0.52": "sim-host (dispenser)",
+    "10.40.0.53": "sim-host (vessel card reader)",
+    "10.40.0.54": "sim-host (operator card reader)",
+    "10.40.0.55": "sim-host (dock operator)",
+}
+# The zones' networks, whose broadcast addresses name no host.
+ZONES = tuple(
+    ipaddress.ip_network(n)
+    for n in ("10.10.0.0/24", "10.20.0.0/24", "10.30.0.0/24", "10.40.0.0/24")
+)
+
+
+def names_no_host(address: ipaddress.IPv4Address) -> bool:
+    """Whether an address names a group of hosts or none: multicast, the
+    limited broadcast, the unspecified address, or a zone's broadcast
+    address."""
+    return (
+        address.is_multicast
+        or address.is_unspecified
+        or address == ipaddress.IPv4Address("255.255.255.255")
+        or any(address == zone.broadcast_address for zone in ZONES)
+    )
+
+
+def unknown_addresses(record: dict[str, Any]) -> Iterator[str]:
+    """Each IPv4 address of a packet inspection record that the address plan
+    does not hold."""
+    data = record.get("data")
+    if not isinstance(data, dict):
+        return
+    for key in ("src_ip", "dest_ip"):
+        text = data.get(key)
+        if not isinstance(text, str) or text in ADDRESS_PLAN:
+            continue
+        try:
+            address = ipaddress.ip_address(text)
+        except ValueError:
+            continue
+        if address.version == 4 and not names_no_host(address):
+            yield text
+
+
+def level(alert: dict[str, Any]) -> int:
+    rule = alert.get("rule")
+    try:
+        return int(rule.get("level", 0)) if isinstance(rule, dict) else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def reasons(
+    alerts: Iterable[dict[str, Any]], inspection: Iterable[dict[str, Any]]
+) -> list[str]:
+    """The reasons for an alarm that one step's reads give, or none."""
+    found = []
+    for alert in alerts:
+        if level(alert) >= MIN_LEVEL:
+            rule = alert["rule"]
+            agent = (alert.get("agent") or {}).get("name")
+            found.append(
+                f"alert of rule {rule.get('id')}, level {level(alert)}, "
+                f"from {agent}: {rule.get('description')}"
+            )
+    for record in inspection:
+        for address in unknown_addresses(record):
+            agent = (record.get("agent") or {}).get("name")
+            found.append(
+                f"address {address}, outside the address plan, seen by {agent}"
+            )
+    return found
+
+
+def main() -> int:
+    telemetry = protocol.Telemetry.load(str(TELEMETRY))
+
+    def decide(request: protocol.Request) -> bool:
+        alerts = protocol.read("alerts", telemetry=telemetry)
+        inspection = protocol.read("archives", location=INSPECTION, telemetry=telemetry)
+        found = reasons(alerts, inspection)
+        if found:
+            print(
+                f"defender: alarm at step {request.step}: {found[0]}", file=sys.stderr
+            )
+        return bool(found)
+
+    return protocol.run(decide)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

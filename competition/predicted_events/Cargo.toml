@@ -1,0 +1,23 @@
+[package]
+name = "predicted-events"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+# The simulator's own configuration, and the versions of the random-number
+# crates that the simulator locks in infra/sim/Cargo.lock, so that the tug
+# stream repeated here matches the simulator's draw for draw.
+[dependencies]
+sim = { path = "../../infra/sim" }
+rand = "=0.9.5"
+rand_chacha = "=0.9.0"
+rand_distr = "=0.5.1"
+
+# The test of the first draws runs the simulator's own generator and reads its
+# log, with the versions that infra/sim/Cargo.toml gives.
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+time = { version = "0.3", features = ["macros", "parsing"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

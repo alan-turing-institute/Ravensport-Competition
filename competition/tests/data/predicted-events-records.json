@@ -1,0 +1,1623 @@
+{
+ "timings": {
+  "lead_time_s": 2880.0,
+  "poll_s": 180.0,
+  "check_s": 17280.0,
+  "audit_period": "144h",
+  "settling_delay_s": 4320.0,
+  "outflow_l_per_s": 25.0,
+  "inflow_l_per_s": 50.0, "cavitation_l": 5000.0,
+  "delivery_volume_l": 18000.0,
+  "roster": [[1999997, 720.0]],
+  "refuel_volume_l": [500.0, 3000.0],
+  "dock_operator_poll_s": 6.0
+ },
+ "episodes": [
+  {
+   "record": "20261107T222734Z-cb8449f7",
+   "chain": "it-foothold__disclose-account-inventory",
+   "onset_step": 10,
+   "waits_s": [
+    8.197,
+    20.999,
+    13.284
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 22350.217869172266,
+     "order_pending_s": null,
+     "first_poll_after_s": 48.416173288,
+     "first_check_after_s": 16228.221754866,
+     "first_audit_after_s": 116870.269987524
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 634.8252555250601,
+      "volume_l": 1793.6770934676767
+     },
+     {
+      "at_s": 2082.271816599593,
+      "volume_l": 1778.3890278909116
+     },
+     {
+      "at_s": 2902.6020139418547,
+      "volume_l": 2038.6392341448861
+     },
+     {
+      "at_s": 3135.576531711131,
+      "volume_l": 1294.875885113342
+     },
+     {
+      "at_s": 3969.769773890077,
+      "volume_l": 2014.6590734310982
+     },
+     {
+      "at_s": 4432.450881029095,
+      "volume_l": 1693.2758381053916
+     },
+     {
+      "at_s": 4505.105839527556,
+      "volume_l": 984.1568111111133
+     },
+     {
+      "at_s": 5193.087457856485,
+      "volume_l": 997.6598565203637
+     },
+     {
+      "at_s": 5286.771960411186,
+      "volume_l": 2559.32699755217
+     },
+     {
+      "at_s": 7281.506848680467,
+      "volume_l": 1685.5398729328026
+     },
+     {
+      "at_s": 7430.885729892828,
+      "volume_l": 829.9632579477734
+     },
+     {
+      "at_s": 7694.9200693775865,
+      "volume_l": 677.3254877765057
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "enumerate-directory",
+    "disclose-account-inventory"
+   ]
+  },
+  {
+   "record": "20261107T224108Z-64827930",
+   "chain": "it-foothold__deny-directory-availability",
+   "onset_step": 7,
+   "waits_s": [
+    13.915,
+    7.34
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 7428.161479010502,
+     "order_pending_s": 1188.954037909,
+     "first_poll_after_s": null,
+     "first_check_after_s": 12061.178583021,
+     "first_audit_after_s": 216878.682611094
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 1213.6197018592313,
+      "volume_l": 1089.975366716109
+     },
+     {
+      "at_s": 2941.7685983849897,
+      "volume_l": 2616.015408744627
+     },
+     {
+      "at_s": 3312.7411829805797,
+      "volume_l": 1957.4611057222187
+     },
+     {
+      "at_s": 4746.18064852648,
+      "volume_l": 1736.2575523894081
+     },
+     {
+      "at_s": 4855.279754020366,
+      "volume_l": 2917.056395255983
+     },
+     {
+      "at_s": 5206.58382776681,
+      "volume_l": 1562.608708654425
+     },
+     {
+      "at_s": 5263.750168378134,
+      "volume_l": 2151.052217487404
+     },
+     {
+      "at_s": 5327.5725206448415,
+      "volume_l": 945.1410538880846
+     },
+     {
+      "at_s": 5796.727686390159,
+      "volume_l": 2684.757527673524
+     },
+     {
+      "at_s": 6126.428972942216,
+      "volume_l": 2635.6105928535817
+     },
+     {
+      "at_s": 7369.632901424929,
+      "volume_l": 2726.6502005001994
+     },
+     {
+      "at_s": 7532.552637548062,
+      "volume_l": 2864.3118402252135
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "deny-directory-availability"
+   ]
+  },
+  {
+   "record": "20261107T225328Z-609a2dfb",
+   "chain": "external-informed__exfiltrate-inventory",
+   "onset_step": 6,
+   "waits_s": [
+    7.602,
+    14.375,
+    7.77,
+    5.158,
+    8.035
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 14057.190330452117,
+     "order_pending_s": null,
+     "first_poll_after_s": 63.931875518,
+     "first_check_after_s": 5236.443914925,
+     "first_audit_after_s": 220763.777217986
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 610.5851642369861,
+      "volume_l": 736.5717728570448
+     },
+     {
+      "at_s": 1309.1295223912157,
+      "volume_l": 609.9908510907649
+     },
+     {
+      "at_s": 1636.0171949283813,
+      "volume_l": 2357.0012637619316
+     },
+     {
+      "at_s": 2272.2380200435136,
+      "volume_l": 2403.405127504369
+     },
+     {
+      "at_s": 2457.911185756132,
+      "volume_l": 2090.226630470577
+     },
+     {
+      "at_s": 3089.17309749955,
+      "volume_l": 983.6554113982944
+     },
+     {
+      "at_s": 6605.998865728861,
+      "volume_l": 2941.4161821906323
+     },
+     {
+      "at_s": 7116.788880580653,
+      "volume_l": 1165.536285647732
+     },
+     {
+      "at_s": 8127.2637568835635,
+      "volume_l": 582.5391226257454
+     },
+     {
+      "at_s": 8297.266662799193,
+      "volume_l": 1347.291799965077
+     },
+     {
+      "at_s": 8307.473669043062,
+      "volume_l": 916.2529271556009
+     },
+     {
+      "at_s": 8399.191133127402,
+      "volume_l": 2173.2498153967263
+     }
+    ]
+   },
+   "outcome": "the episode ended during the stage",
+   "stages": [
+    "discover-gateway",
+    "prove-raw-frame-tx",
+    "prove-forged-frame-honoured",
+    "intercept-supplier-poll",
+    "exfiltrate-inventory"
+   ]
+  },
+  {
+   "record": "20261107T230529Z-580e1292",
+   "chain": "external-informed__inject-false-feed",
+   "onset_step": 14,
+   "waits_s": [
+    5.789,
+    22.573,
+    17.429,
+    9.993,
+    9.935,
+    13.315
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 16413.798331597343,
+     "order_pending_s": null,
+     "first_poll_after_s": 131.144566013,
+     "first_check_after_s": 16291.121814378,
+     "first_audit_after_s": 351313.433412843
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 30.470169145524,
+      "volume_l": 1683.557773500773
+     },
+     {
+      "at_s": 34.39223607293912,
+      "volume_l": 2818.9620788610364
+     },
+     {
+      "at_s": 1601.7550708651668,
+      "volume_l": 2895.005983335564
+     },
+     {
+      "at_s": 1657.5215470159237,
+      "volume_l": 1069.0526985262668
+     },
+     {
+      "at_s": 2149.073908382218,
+      "volume_l": 2993.312540048239
+     },
+     {
+      "at_s": 2501.8745257694386,
+      "volume_l": 2962.8207453577415
+     },
+     {
+      "at_s": 3818.471164769917,
+      "volume_l": 882.1676556063642
+     },
+     {
+      "at_s": 4159.631408406353,
+      "volume_l": 1548.7814604586204
+     },
+     {
+      "at_s": 5803.358008002151,
+      "volume_l": 1838.9402104437258
+     },
+     {
+      "at_s": 6276.9407076855605,
+      "volume_l": 2965.706526478404
+     },
+     {
+      "at_s": 7286.979324536681,
+      "volume_l": 2969.172992504243
+     },
+     {
+      "at_s": 7394.267389103937,
+      "volume_l": 2766.841988847146
+     }
+    ]
+   },
+   "outcome": "the episode ended during the stage",
+   "stages": [
+    "discover-gateway",
+    "prove-raw-frame-tx",
+    "prove-forged-frame-honoured",
+    "intercept-supplier-poll",
+    "resolve-supplier-mac",
+    "inject-false-feed"
+   ]
+  },
+  {
+   "record": "20261107T231728Z-caf7178c",
+   "chain": "external-informed__starve-ot-console-feed-via-relay",
+   "onset_step": 10,
+   "waits_s": [
+    8.813,
+    12.245,
+    21.567,
+    8.318,
+    9.934,
+    15.151
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 21397.036702014877,
+     "order_pending_s": null,
+     "first_poll_after_s": 126.923669107,
+     "first_check_after_s": 13939.437733969,
+     "first_audit_after_s": 432465.133655219
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 161.4526595324661,
+      "volume_l": 565.2061717425468
+     },
+     {
+      "at_s": 930.3015746668016,
+      "volume_l": 2471.2424330076365
+     },
+     {
+      "at_s": 1159.7796306072414,
+      "volume_l": 2820.3773015302
+     },
+     {
+      "at_s": 3395.3362036929257,
+      "volume_l": 815.0449505674413
+     },
+     {
+      "at_s": 3690.89798947534,
+      "volume_l": 1811.5718883267607
+     },
+     {
+      "at_s": 4011.6628534885213,
+      "volume_l": 2459.573541516097
+     },
+     {
+      "at_s": 4365.630393231096,
+      "volume_l": 653.3062066686341
+     },
+     {
+      "at_s": 4629.249179150476,
+      "volume_l": 2763.5443317803033
+     },
+     {
+      "at_s": 5226.527947461456,
+      "volume_l": 2598.9565822687064
+     },
+     {
+      "at_s": 6356.239994277878,
+      "volume_l": 2927.896566191136
+     },
+     {
+      "at_s": 6391.594851130284,
+      "volume_l": 2960.2902264556665
+     },
+     {
+      "at_s": 9560.7326196156,
+      "volume_l": 1824.0469075525414
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "discover-gateway",
+    "prove-raw-frame-tx",
+    "prove-forged-frame-honoured",
+    "intercept-supplier-poll",
+    "resolve-supplier-mac",
+    "starve-ot-console-feed-via-relay"
+   ]
+  },
+  {
+   "record": "20261107T232930Z-e3bdb8db",
+   "chain": "external-blind__replay-false-feed",
+   "onset_step": 13,
+   "waits_s": [
+    24.482,
+    8.204,
+    8.184,
+    14.947,
+    23.598,
+    5.31,
+    16.474
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 16700.246441391915,
+     "order_pending_s": null,
+     "first_poll_after_s": 53.245362899,
+     "first_check_after_s": 1618.313957554,
+     "first_audit_after_s": 154093.154611949
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 347.86278316391343,
+      "volume_l": 2288.963537375031
+     },
+     {
+      "at_s": 786.9626583428794,
+      "volume_l": 2739.2739056358473
+     },
+     {
+      "at_s": 1048.4207087848747,
+      "volume_l": 2559.78887761218
+     },
+     {
+      "at_s": 1334.5273087177281,
+      "volume_l": 717.8517503899163
+     },
+     {
+      "at_s": 1596.7931708191322,
+      "volume_l": 2718.18657280091
+     },
+     {
+      "at_s": 1670.3613126095809,
+      "volume_l": 548.2478517222423
+     },
+     {
+      "at_s": 2254.48791750742,
+      "volume_l": 1995.3118569878131
+     },
+     {
+      "at_s": 2770.944593264441,
+      "volume_l": 1243.7200642202156
+     },
+     {
+      "at_s": 3601.984409658857,
+      "volume_l": 824.296552284129
+     },
+     {
+      "at_s": 3605.1722224843566,
+      "volume_l": 2999.5007288455763
+     },
+     {
+      "at_s": 4006.689408830442,
+      "volume_l": 1455.6455887454463
+     },
+     {
+      "at_s": 4079.1068244370435,
+      "volume_l": 2655.344012662862
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "discover-gateway",
+    "prove-raw-frame-tx",
+    "prove-forged-frame-honoured",
+    "intercept-supplier-poll",
+    "resolve-supplier-mac",
+    "capture-relay-reply",
+    "replay-false-feed"
+   ]
+  },
+  {
+   "record": "20261107T234130Z-cbeded18",
+   "chain": "it-foothold__lock-operator-via-self-password",
+   "onset_step": 12,
+   "waits_s": [
+    8.089,
+    15.459,
+    24.176,
+    8.667
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 22074.837567409693,
+     "order_pending_s": null,
+     "first_poll_after_s": 129.987915458,
+     "first_check_after_s": 2279.122651854,
+     "first_audit_after_s": 240941.245297841
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 669.3950217251426,
+      "volume_l": 1929.6497470769687
+     },
+     {
+      "at_s": 860.9394333168373,
+      "volume_l": 1395.7264444845225
+     },
+     {
+      "at_s": 884.8086446822257,
+      "volume_l": 534.1422409770736
+     },
+     {
+      "at_s": 953.6256896026545,
+      "volume_l": 2013.1575014039483
+     },
+     {
+      "at_s": 1197.9475141978983,
+      "volume_l": 651.0581257457067
+     },
+     {
+      "at_s": 1859.340780989888,
+      "volume_l": 1335.0481869523624
+     },
+     {
+      "at_s": 2106.20732785396,
+      "volume_l": 1709.521045446388
+     },
+     {
+      "at_s": 3137.611658429193,
+      "volume_l": 853.3438018044943
+     },
+     {
+      "at_s": 3140.154821418647,
+      "volume_l": 2081.0282989789184
+     },
+     {
+      "at_s": 5290.063048940224,
+      "volume_l": 982.8691011463077
+     },
+     {
+      "at_s": 6039.21649756808,
+      "volume_l": 2083.029044959958
+     },
+     {
+      "at_s": 6962.498304347755,
+      "volume_l": 2349.1347762288706
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "enumerate-directory",
+    "spray-operator-credential",
+    "lock-operator-via-self-password"
+   ]
+  },
+  {
+   "record": "20261107T235318Z-a35e3b23",
+   "chain": "it-foothold__overwrite-operator-entry-as-manager",
+   "onset_step": 16,
+   "waits_s": [
+    8.803,
+    13.918,
+    22.418,
+    16.779
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 8865.137485136187,
+     "order_pending_s": 1070.987694774,
+     "first_poll_after_s": null,
+     "first_check_after_s": 16858.947960724,
+     "first_audit_after_s": 281640.39735554
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 198.1766709624702,
+      "volume_l": 1691.8965928581015
+     },
+     {
+      "at_s": 536.1992239222777,
+      "volume_l": 1683.022335280956
+     },
+     {
+      "at_s": 1878.7989285419872,
+      "volume_l": 1825.5901296285144
+     },
+     {
+      "at_s": 2424.9025384857105,
+      "volume_l": 831.9928583102328
+     },
+     {
+      "at_s": 3274.6796358517386,
+      "volume_l": 1130.0828567211593
+     },
+     {
+      "at_s": 3470.8719898112204,
+      "volume_l": 1323.5674780889694
+     },
+     {
+      "at_s": 3823.804272463527,
+      "volume_l": 2043.64863046552
+     },
+     {
+      "at_s": 7348.504348756602,
+      "volume_l": 1267.3551280087381
+     },
+     {
+      "at_s": 8122.260668410685,
+      "volume_l": 798.8430265116482
+     },
+     {
+      "at_s": 8364.2136524757,
+      "volume_l": 1584.2449458307995
+     },
+     {
+      "at_s": 8661.072015140737,
+      "volume_l": 2548.3883621462596
+     },
+     {
+      "at_s": 8780.478755838112,
+      "volume_l": 2081.9405229624595
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "enumerate-directory",
+    "spray-manager-credential",
+    "overwrite-operator-entry-as-manager"
+   ]
+  },
+  {
+   "record": "20261108T000301Z-5bc23532",
+   "chain": "it-foothold__starve-fms-tank-feed-via-route-null",
+   "onset_step": 9,
+   "waits_s": [
+    7.884,
+    17.173,
+    15.17,
+    5.662
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 21819.47269176403,
+     "order_pending_s": null,
+     "first_poll_after_s": 74.547196902,
+     "first_check_after_s": 3883.666820643,
+     "first_audit_after_s": 88248.120482437
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 47.21839491833716,
+      "volume_l": 1405.7900846873608
+     },
+     {
+      "at_s": 1056.4263452766302,
+      "volume_l": 1899.2018183391558
+     },
+     {
+      "at_s": 1116.4884546617136,
+      "volume_l": 2573.859742523064
+     },
+     {
+      "at_s": 2446.541405813149,
+      "volume_l": 523.2445773261236
+     },
+     {
+      "at_s": 2797.5812264372453,
+      "volume_l": 1287.693383036532
+     },
+     {
+      "at_s": 2991.614134317631,
+      "volume_l": 2019.2282519463306
+     },
+     {
+      "at_s": 3988.586571869171,
+      "volume_l": 2790.5983609939926
+     },
+     {
+      "at_s": 4859.725261442591,
+      "volume_l": 2792.508689226775
+     },
+     {
+      "at_s": 5060.892370854956,
+      "volume_l": 1966.5397587539853
+     },
+     {
+      "at_s": 5496.858821900415,
+      "volume_l": 2543.2864708162833
+     },
+     {
+      "at_s": 5820.641255454973,
+      "volume_l": 2575.3635590201516
+     },
+     {
+      "at_s": 5827.111902596623,
+      "volume_l": 1341.8230087601587
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "acquire-siem-management-credential",
+    "enumerate-siem-agent-inventory",
+    "starve-fms-tank-feed-via-route-null"
+   ]
+  },
+  {
+   "record": "20261108T001508Z-342e4f0d",
+   "chain": "it-foothold__deny-supplier-feed-via-relay-route-null",
+   "onset_step": 16,
+   "waits_s": [
+    7.618,
+    9.465,
+    13.033,
+    8.333
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 11493.149106158458,
+     "order_pending_s": 2448.013268271,
+     "first_poll_after_s": null,
+     "first_check_after_s": 14701.517851085,
+     "first_audit_after_s": 497640.752938615
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 456.76792248483036,
+      "volume_l": 2145.95747490113
+     },
+     {
+      "at_s": 463.66676588127194,
+      "volume_l": 2521.5712593480603
+     },
+     {
+      "at_s": 2573.392713844529,
+      "volume_l": 1649.6287450999193
+     },
+     {
+      "at_s": 3058.8632967860185,
+      "volume_l": 1524.731778207561
+     },
+     {
+      "at_s": 3577.9294274419626,
+      "volume_l": 1933.2038901527433
+     },
+     {
+      "at_s": 5411.889379751148,
+      "volume_l": 2441.7910363568762
+     },
+     {
+      "at_s": 5973.398417954744,
+      "volume_l": 2175.1331033119895
+     },
+     {
+      "at_s": 6407.311847034324,
+      "volume_l": 2609.740310189056
+     },
+     {
+      "at_s": 6515.403280171023,
+      "volume_l": 1582.4320322276599
+     },
+     {
+      "at_s": 7287.758221739907,
+      "volume_l": 1059.8719153292454
+     },
+     {
+      "at_s": 9806.256599446764,
+      "volume_l": 1519.556645979367
+     },
+     {
+      "at_s": 10057.522422451771,
+      "volume_l": 2842.9774662558934
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "acquire-siem-management-credential",
+    "enumerate-siem-agent-inventory",
+    "deny-supplier-feed-via-relay-route-null"
+   ]
+  },
+  {
+   "record": "20261108T002715Z-3e64795d",
+   "chain": "it-foothold__deny-ot-log-replication-via-firewall-route-null",
+   "onset_step": 8,
+   "waits_s": [
+    7.277,
+    8.261,
+    16.089,
+    25.172
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 25286.9870958095,
+     "order_pending_s": null,
+     "first_poll_after_s": 126.682707399,
+     "first_check_after_s": 12736.886367853,
+     "first_audit_after_s": 346343.251296989
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 630.8841044076645,
+      "volume_l": 955.736101736896
+     },
+     {
+      "at_s": 1198.8103157278142,
+      "volume_l": 2207.290219783288
+     },
+     {
+      "at_s": 3363.2234596246576,
+      "volume_l": 1061.594507017531
+     },
+     {
+      "at_s": 4279.659251819411,
+      "volume_l": 588.6697533628583
+     },
+     {
+      "at_s": 4564.147852015057,
+      "volume_l": 2356.796077952278
+     },
+     {
+      "at_s": 4564.277701439374,
+      "volume_l": 2198.4863119352667
+     },
+     {
+      "at_s": 4661.190087365272,
+      "volume_l": 666.168618534308
+     },
+     {
+      "at_s": 5957.010232730117,
+      "volume_l": 801.2698823812832
+     },
+     {
+      "at_s": 6189.66650134093,
+      "volume_l": 2357.599315142366
+     },
+     {
+      "at_s": 7799.354571750035,
+      "volume_l": 534.0233323699946
+     },
+     {
+      "at_s": 7822.8566731900255,
+      "volume_l": 1565.9105538072422
+     },
+     {
+      "at_s": 8901.941404423873,
+      "volume_l": 966.2876706750797
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "acquire-siem-management-credential",
+    "enumerate-siem-agent-inventory",
+    "deny-ot-log-replication-via-firewall-route-null"
+   ]
+  },
+  {
+   "record": "20261108T003916Z-e5e663e3",
+   "chain": "it-foothold__deny-ot-directory-via-firewall-route-null",
+   "onset_step": 9,
+   "waits_s": [
+    9.527,
+    7.57,
+    7.732,
+    11.768
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 14453.147502272437,
+     "order_pending_s": 2616.104903522,
+     "first_poll_after_s": null,
+     "first_check_after_s": 3506.240322666,
+     "first_audit_after_s": 476382.639923552
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 1543.9964163882314,
+      "volume_l": 677.9803298133953
+     },
+     {
+      "at_s": 2124.83585733477,
+      "volume_l": 1377.3072793231502
+     },
+     {
+      "at_s": 2442.848508205584,
+      "volume_l": 2349.597714194254
+     },
+     {
+      "at_s": 4002.9743187266067,
+      "volume_l": 2438.2518627814907
+     },
+     {
+      "at_s": 5470.366793383815,
+      "volume_l": 1358.2291308015622
+     },
+     {
+      "at_s": 9065.70810085162,
+      "volume_l": 2404.541182542866
+     },
+     {
+      "at_s": 9316.971412703788,
+      "volume_l": 2648.094706171256
+     },
+     {
+      "at_s": 10660.073371749142,
+      "volume_l": 1248.2090147226788
+     },
+     {
+      "at_s": 11240.37572775097,
+      "volume_l": 2233.6078856828285
+     },
+     {
+      "at_s": 12142.591467516024,
+      "volume_l": 1191.7691947606525
+     },
+     {
+      "at_s": 12549.334602125095,
+      "volume_l": 2769.970551850842
+     },
+     {
+      "at_s": 13824.971945601661,
+      "volume_l": 2176.1272357132207
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "acquire-siem-management-credential",
+    "enumerate-siem-agent-inventory",
+    "deny-ot-directory-via-firewall-route-null"
+   ]
+  },
+  {
+   "record": "20261108T005116Z-9925b692",
+   "chain": "it-foothold__deny-fms-vessel-identity-via-route-null",
+   "onset_step": 13,
+   "waits_s": [
+    5.069,
+    5.247,
+    10.879,
+    13.603
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 22178.68265896365,
+     "order_pending_s": null,
+     "first_poll_after_s": 16.793355883,
+     "first_check_after_s": 17109.719652965,
+     "first_audit_after_s": 75286.995363573
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 755.1112706217458,
+      "volume_l": 2238.0187888773985
+     },
+     {
+      "at_s": 1746.3724301762168,
+      "volume_l": 1389.643570326289
+     },
+     {
+      "at_s": 3936.4960178322794,
+      "volume_l": 2270.5671334345006
+     },
+     {
+      "at_s": 4248.481023148907,
+      "volume_l": 934.0177337292583
+     },
+     {
+      "at_s": 4391.100905249701,
+      "volume_l": 1149.1972000254991
+     },
+     {
+      "at_s": 4732.847832884953,
+      "volume_l": 2091.971123693463
+     },
+     {
+      "at_s": 5173.505604462387,
+      "volume_l": 2472.5420954463007
+     },
+     {
+      "at_s": 5705.670033345927,
+      "volume_l": 2477.2917993912015
+     },
+     {
+      "at_s": 5737.105096699748,
+      "volume_l": 2874.6662987899113
+     },
+     {
+      "at_s": 7260.582551616569,
+      "volume_l": 2172.4547757692744
+     },
+     {
+      "at_s": 7808.771628998846,
+      "volume_l": 1271.877391549789
+     },
+     {
+      "at_s": 8315.95267583236,
+      "volume_l": 793.5174175682204
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "acquire-siem-management-credential",
+    "enumerate-siem-agent-inventory",
+    "deny-fms-vessel-identity-via-route-null"
+   ]
+  },
+  {
+   "record": "20261108T010318Z-0fac5afb",
+   "chain": "it-foothold__deny-fms-dispenser-control-via-route-null",
+   "onset_step": 9,
+   "waits_s": [
+    5.534,
+    7.614,
+    16.513,
+    21.748
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 20186.93565472043,
+     "order_pending_s": null,
+     "first_poll_after_s": 92.521167356,
+     "first_check_after_s": 7808.61255292,
+     "first_audit_after_s": 127040.546528188
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 184.47329824558233,
+      "volume_l": 2985.477934615489
+     },
+     {
+      "at_s": 701.6379683550545,
+      "volume_l": 1885.0333681200593
+     },
+     {
+      "at_s": 1134.641711223015,
+      "volume_l": 569.3044005019783
+     },
+     {
+      "at_s": 2522.420782391824,
+      "volume_l": 2790.5985068105892
+     },
+     {
+      "at_s": 2953.4490894572436,
+      "volume_l": 1612.4668100902402
+     },
+     {
+      "at_s": 4564.685090611993,
+      "volume_l": 1994.7159262651749
+     },
+     {
+      "at_s": 4835.267275489044,
+      "volume_l": 2244.775843239334
+     },
+     {
+      "at_s": 5187.378545511256,
+      "volume_l": 733.1129130519649
+     },
+     {
+      "at_s": 6154.7412340854535,
+      "volume_l": 2623.7374820688697
+     },
+     {
+      "at_s": 8217.991832409012,
+      "volume_l": 1408.5690780228033
+     },
+     {
+      "at_s": 8418.391270876811,
+      "volume_l": 642.8491001146215
+     },
+     {
+      "at_s": 8623.371849784844,
+      "volume_l": 1929.7063210749861
+     }
+    ]
+   },
+   "outcome": "the stage failed: inventory did not locate a target for FmsDispenserControl",
+   "stages": [
+    "scan-it-segment",
+    "acquire-siem-management-credential",
+    "enumerate-siem-agent-inventory",
+    "deny-fms-dispenser-control-via-route-null"
+   ]
+  },
+  {
+   "record": "20261108T011522Z-71e22cb2",
+   "chain": "it-foothold__deny-operator-identity-via-route-null",
+   "onset_step": 15,
+   "waits_s": [
+    9.673,
+    14.719,
+    8.773,
+    17.758
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 11764.260592144117,
+     "order_pending_s": 1900.710531545,
+     "first_poll_after_s": null,
+     "first_check_after_s": 4238.666543419,
+     "first_audit_after_s": 88564.081563689
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 180.9168006081099,
+      "volume_l": 2142.961489392348
+     },
+     {
+      "at_s": 879.2841961084696,
+      "volume_l": 895.6311264898827
+     },
+     {
+      "at_s": 1142.3591701457588,
+      "volume_l": 1170.7029920589807
+     },
+     {
+      "at_s": 2038.8951699527433,
+      "volume_l": 534.8363064552898
+     },
+     {
+      "at_s": 2080.411129381912,
+      "volume_l": 1390.3337793847359
+     },
+     {
+      "at_s": 2268.768625094298,
+      "volume_l": 1461.8694502680623
+     },
+     {
+      "at_s": 3449.2070003647023,
+      "volume_l": 1935.6258713537839
+     },
+     {
+      "at_s": 4306.635581596275,
+      "volume_l": 1051.2197881676784
+     },
+     {
+      "at_s": 4410.1340833804215,
+      "volume_l": 1434.0507604825948
+     },
+     {
+      "at_s": 4828.2216656539895,
+      "volume_l": 2733.6444155693757
+     },
+     {
+      "at_s": 5571.215830391317,
+      "volume_l": 576.58269438372
+     },
+     {
+      "at_s": 6851.44740065401,
+      "volume_l": 1058.3956171141845
+     }
+    ]
+   },
+   "outcome": "the stage failed: route-null not accepted for agent 002: error=1 body={\"data\": {\"affected_items\": [], \"total_affected_items\": 0, \"total_failed_items\": 1, \"failed_items\": [{\"error\": {\"code\": 1116, \"message\": \"Requested component configuration does not exist: com:active-response\", \"remediation\": \"Please, visit the official documentation (https://documentation.wazuh.com/4.14/user-manual/api/reference.html#operation/api.controllers.agents_controller.get_agent_config) to check available component configurations\"}, \"id\": [\"002\"]}]}, \"message\": \"AR command was not sent to any agent\", \"error\": 1}",
+   "stages": [
+    "scan-it-segment",
+    "acquire-siem-management-credential",
+    "enumerate-siem-agent-inventory",
+    "deny-operator-identity-via-route-null"
+   ]
+  },
+  {
+   "record": "20261108T012724Z-a899b916",
+   "chain": "it-foothold__deny-operator-control-via-route-null",
+   "onset_step": 12,
+   "waits_s": [
+    8.852,
+    15.989,
+    7.595,
+    14.494
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 22457.07399132262,
+     "order_pending_s": null,
+     "first_poll_after_s": 103.082340841,
+     "first_check_after_s": 7985.216752798,
+     "first_audit_after_s": 47341.248609008
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 481.76132966348223,
+      "volume_l": 2219.543573478153
+     },
+     {
+      "at_s": 758.7606057720961,
+      "volume_l": 509.587527679088
+     },
+     {
+      "at_s": 1273.6996479476102,
+      "volume_l": 845.8228210529362
+     },
+     {
+      "at_s": 2531.5890967671658,
+      "volume_l": 1528.6736585746637
+     },
+     {
+      "at_s": 5138.394071141167,
+      "volume_l": 1365.7908904971573
+     },
+     {
+      "at_s": 6504.334220221395,
+      "volume_l": 1869.5465294545822
+     },
+     {
+      "at_s": 7673.457815232637,
+      "volume_l": 518.9376452570978
+     },
+     {
+      "at_s": 7877.085874609687,
+      "volume_l": 2443.932915800484
+     },
+     {
+      "at_s": 7912.508308467262,
+      "volume_l": 1712.668628471154
+     },
+     {
+      "at_s": 9772.309917592163,
+      "volume_l": 707.4518736213493
+     },
+     {
+      "at_s": 10943.12196918491,
+      "volume_l": 1700.9621711854907
+     },
+     {
+      "at_s": 11133.80882276519,
+      "volume_l": 2623.235445298806
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "scan-it-segment",
+    "acquire-siem-management-credential",
+    "enumerate-siem-agent-inventory",
+    "deny-operator-control-via-route-null"
+   ]
+  },
+  {
+   "record": "20261108T054105Z-5e580e51",
+   "chain": "external-informed__exfiltrate-inventory",
+   "onset_step": 12,
+   "waits_s": [
+    8.69,
+    6.101,
+    20.422,
+    10.626,
+    9.039
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 29084.541639178024,
+     "order_pending_s": null,
+     "first_poll_after_s": 109.154356749,
+     "first_check_after_s": 11404.327408511,
+     "first_audit_after_s": 329006.682540738
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 623.1350070957341,
+      "volume_l": 1186.3477526925838
+     },
+     {
+      "at_s": 1327.685996112259,
+      "volume_l": 2125.8623844694603
+     },
+     {
+      "at_s": 1690.7964849227749,
+      "volume_l": 1756.8871272999627
+     },
+     {
+      "at_s": 2389.1070087423836,
+      "volume_l": 1420.7060928576566
+     },
+     {
+      "at_s": 3183.054143772324,
+      "volume_l": 891.1881570261855
+     },
+     {
+      "at_s": 3193.0080824300235,
+      "volume_l": 1566.4964306719683
+     },
+     {
+      "at_s": 3519.509099831397,
+      "volume_l": 2635.1929369168865
+     },
+     {
+      "at_s": 4456.431020566606,
+      "volume_l": 1420.6236561203814
+     },
+     {
+      "at_s": 4466.4917795628235,
+      "volume_l": 1335.5567563260734
+     },
+     {
+      "at_s": 4621.622879570274,
+      "volume_l": 2396.4513888637375
+     },
+     {
+      "at_s": 5472.392919867626,
+      "volume_l": 504.8917006188737
+     },
+     {
+      "at_s": 6166.668754560556,
+      "volume_l": 1257.599693371902
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "discover-gateway",
+    "prove-raw-frame-tx",
+    "prove-forged-frame-honoured",
+    "intercept-supplier-poll",
+    "exfiltrate-inventory"
+   ]
+  },
+  {
+   "record": "20261108T055303Z-7252534a",
+   "chain": "external-informed__inject-false-feed",
+   "onset_step": 16,
+   "waits_s": [
+    15.653,
+    9.628,
+    24.417,
+    15.532,
+    6.532,
+    20.771
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 25625.60422599665,
+     "order_pending_s": null,
+     "first_poll_after_s": 36.786369588,
+     "first_check_after_s": 6446.063710113,
+     "first_audit_after_s": 305097.597960372
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 169.41199889198575,
+      "volume_l": 2976.6571398560113
+     },
+     {
+      "at_s": 615.7475722389986,
+      "volume_l": 1220.9011344711264
+     },
+     {
+      "at_s": 1401.10718554463,
+      "volume_l": 830.7348721798448
+     },
+     {
+      "at_s": 2777.4416898925037,
+      "volume_l": 695.4522588171731
+     },
+     {
+      "at_s": 2860.554080240823,
+      "volume_l": 1434.3211259254485
+     },
+     {
+      "at_s": 2992.235991483202,
+      "volume_l": 522.130278243539
+     },
+     {
+      "at_s": 3714.85210734225,
+      "volume_l": 2977.888563312377
+     },
+     {
+      "at_s": 3999.2191690741856,
+      "volume_l": 1521.2605429639693
+     },
+     {
+      "at_s": 4051.713578153126,
+      "volume_l": 1374.8116169651594
+     },
+     {
+      "at_s": 4113.114569883662,
+      "volume_l": 666.1737027236504
+     },
+     {
+      "at_s": 4161.775615114992,
+      "volume_l": 1179.7735363338147
+     },
+     {
+      "at_s": 4198.479903744778,
+      "volume_l": 1460.3799915639033
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "discover-gateway",
+    "prove-raw-frame-tx",
+    "prove-forged-frame-honoured",
+    "intercept-supplier-poll",
+    "resolve-supplier-mac",
+    "inject-false-feed"
+   ]
+  },
+  {
+   "record": "20261108T060456Z-b554a318",
+   "chain": "external-informed__starve-ot-console-feed-via-relay",
+   "onset_step": 8,
+   "waits_s": [
+    7.382,
+    6.604,
+    15.565,
+    20.748,
+    8.156,
+    17.708
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 27255.05306104739,
+     "order_pending_s": null,
+     "first_poll_after_s": 134.242563674,
+     "first_check_after_s": 13883.901883876,
+     "first_audit_after_s": 149157.966869667
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 764.5157226318419,
+      "volume_l": 855.3017289482464
+     },
+     {
+      "at_s": 913.4631489987099,
+      "volume_l": 2013.58985258362
+     },
+     {
+      "at_s": 1265.679572217132,
+      "volume_l": 2897.6841070744754
+     },
+     {
+      "at_s": 3637.4755316530664,
+      "volume_l": 1410.0531484164715
+     },
+     {
+      "at_s": 4845.101464342074,
+      "volume_l": 2119.0932622284504
+     },
+     {
+      "at_s": 5696.316108987443,
+      "volume_l": 1838.152165577075
+     },
+     {
+      "at_s": 7587.807692698629,
+      "volume_l": 1658.5543632680672
+     },
+     {
+      "at_s": 7773.239813990857,
+      "volume_l": 2607.625177101171
+     },
+     {
+      "at_s": 8502.7015099202,
+      "volume_l": 1617.7821119873342
+     },
+     {
+      "at_s": 9554.51273098893,
+      "volume_l": 1115.547606089874
+     },
+     {
+      "at_s": 10067.685423045637,
+      "volume_l": 2218.356643632604
+     },
+     {
+      "at_s": 10129.793373593866,
+      "volume_l": 1035.6951571767277
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "discover-gateway",
+    "prove-raw-frame-tx",
+    "prove-forged-frame-honoured",
+    "intercept-supplier-poll",
+    "resolve-supplier-mac",
+    "starve-ot-console-feed-via-relay"
+   ]
+  },
+  {
+   "record": "20261108T061652Z-262d1f0f",
+   "chain": "external-blind__replay-false-feed",
+   "onset_step": 7,
+   "waits_s": [
+    12.52,
+    23.091,
+    11.356,
+    13.41,
+    19.236,
+    8.36,
+    6.234
+   ],
+   "draws": {
+    "start_state": {
+     "initial_volume_l": 23880.057629262723,
+     "order_pending_s": null,
+     "first_poll_after_s": 48.642554078,
+     "first_check_after_s": 136.814351399,
+     "first_audit_after_s": 407935.826851165
+    },
+    "reorder_threshold_l": 15000.0,
+    "delivery_volume_l": 18000.0,
+    "tug_arrivals": [
+     {
+      "at_s": 25.023835168567473,
+      "volume_l": 1892.0425792313267
+     },
+     {
+      "at_s": 365.89753564695746,
+      "volume_l": 1344.6424082118958
+     },
+     {
+      "at_s": 801.4490409362851,
+      "volume_l": 2698.3022526945388
+     },
+     {
+      "at_s": 1085.100686997926,
+      "volume_l": 1692.381134529934
+     },
+     {
+      "at_s": 1354.1584756261598,
+      "volume_l": 1070.6819432318377
+     },
+     {
+      "at_s": 2654.139074928582,
+      "volume_l": 2155.19567219423
+     },
+     {
+      "at_s": 3139.1014037829354,
+      "volume_l": 1787.9947348482933
+     },
+     {
+      "at_s": 4009.300201940051,
+      "volume_l": 1242.54628742985
+     },
+     {
+      "at_s": 4319.845777777153,
+      "volume_l": 986.2700381059948
+     },
+     {
+      "at_s": 4692.59552844637,
+      "volume_l": 2131.617652184963
+     },
+     {
+      "at_s": 7579.07373637254,
+      "volume_l": 973.679863082096
+     },
+     {
+      "at_s": 7934.294437579244,
+      "volume_l": 1027.68457097491
+     }
+    ]
+   },
+   "outcome": "completed",
+   "stages": [
+    "discover-gateway",
+    "prove-raw-frame-tx",
+    "prove-forged-frame-honoured",
+    "intercept-supplier-poll",
+    "resolve-supplier-mac",
+    "capture-relay-reply",
+    "replay-false-feed"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""The idle defender (episodes.md §7, step protocol).
+
+Reads the step messages of the step session, each one JavaScript Object
+Notation (JSON) object on one line of the standard input. Answers each decision
+request at once with a decision message that holds the idle defender's decision,
+no action, in either track. Sends nothing after the end notice, and exits then
+or when the standard input closes.
+"""
+
+import json
+import sys
+
+DECISIONS = {"A": "no action", "B": "no action"}
+
+
+def main() -> int:
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            return 0
+        if not line.strip():
+            continue
+        message = json.loads(line)
+        if message["ended"]:
+            return 0
+        sys.stdout.write(json.dumps({"decision": DECISIONS[message["track"]]}) + "\n")
+        sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
