@@ -1,0 +1,37 @@
+[package]
+name = "sim-hmi-fms"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Three-way integration test: the real sim drives the real HMI and real FMS over the documented sim<->digital APIs, with no container topology."
+
+[lib]
+path = "src/lib.rs"
+
+# The three real hosts under test. Path dependencies — there is no workspace.
+[dependencies]
+sim = { path = "../../../infra/sim" }
+hmi = { path = "../../../hmi" }
+fms = { path = "../../../fms" }
+
+tokio = { version = "1", features = ["full"] }
+# Pinned to the FMS's sqlx so the `PgPool` returned by `fms::db::connect` is the
+# same type the harness's card-enrolment queries run against.
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres"] }
+# Real embedded PostgreSQL with no Docker daemon (downloads a binary on first
+# run, then caches it). See README. `rustls` avoids a system OpenSSL build dep.
+postgresql_embedded = { version = "0.20", default-features = false, features = ["rustls", "theseus", "tokio"] }
+# Minimal in-process LDAP server for the corp-IT directory the FMS binds against.
+ldap3_proto = "0.8"
+tokio-util = { version = "0.7", features = ["codec"] }
+futures = "0.3"
+# Log-server (Ignition) HTTP sink. axum 0.8 to match the hosts.
+axum = { version = "0.8", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
+tracing = "0.1"
+anyhow = "1"
+
+[dev-dependencies]
+time = { version = "0.3", features = ["macros"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
