@@ -1,0 +1,25 @@
+# Dependencies for the FMS integration test suite.
+# Install with: pip install -r tests/integration/requirements.txt
+
+# Test runner
+pytest>=8.0
+
+# FMS HTTPS client (conftest.py); also the hist Grafana auth probe (stubs/grafana.py)
+httpx>=0.27
+
+# Reads the seeded Grafana credentials from world.yaml for the hist suite
+# (conftest.py world_credentials fixture, test_06_grafana_auth.py)
+pyyaml>=6.0
+
+# test_06_grafana_auth.py imports deploy/scripts/render.py to recompute the
+# Grafana hash from world.yaml and confirm it is deterministic.So pull all
+# of render's requirements at once
+-r ../../deploy/requirements.txt
+
+# Modbus TCP stub (stubs/modbus.py)
+# Requires the 3.x API: ModbusDeviceContext, ModbusTcpServer from pymodbus.server.
+# The 2.x API (ModbusSlaveContext, StartTcpServer) is incompatible.
+pymodbus>=3.6
+
+# LDAP account management for the slapd stub (stubs/ldap.py)
+ldap3>=2.9
