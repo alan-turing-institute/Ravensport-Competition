@@ -1,0 +1,59 @@
+[package]
+name = "hmi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hmi"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hmi"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["json", "macros"] }
+tower-http = { version = "0.6", features = ["trace"] }
+
+# HAProxy terminates TLS (sim-network.md §1, hmi.md §3); this binary never
+# does, so it carries no server-side TLS dependency. Its one TLS role is as a
+# client validating the FMS's certificate (src/fms.rs) — reqwest's
+# rustls-tls feature below covers that.
+
+# HTTP client (FMS calls)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Serialisation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Types
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+[dev-dependencies]
+axum = { version = "0.8", features = ["json", "macros"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# TLS trust tests for FmsClient (src/fms.rs): a real HTTPS listener, serving a
+# throwaway CA + leaf cert generated in-process with rcgen — no dependency on
+# an `openssl` CLI being installed on whatever machine runs `cargo test`
+# (tests/fms_tls.rs).
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rcgen = "0.13"
