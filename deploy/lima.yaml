@@ -1,0 +1,200 @@
+# Lima selects the entry matching the host architecture. Pinned to a dated
+# snapshot so every VM is built from the same image; bump deliberately.
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release-20260518/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+    digest: "sha256:6a61b967ba4a27dd1966f835a67643073ed55c2860ce3dc1cb0517282e6b8bec"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release-20260518/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+    digest: "sha256:53fdde898feed8b027d94baa9cfe8229867f330a1d9c49dc7d84465ee7f229f7"
+
+# Incus containers need only the kernel sysctls set below, so the ci-minimal
+# profile runs as-is. The KVM-gated `full` profile needs nested
+# virtualisation: on M3 or later Apple Silicon with macOS 15+, uncomment the
+# two lines below; older hardware cannot provide it (matching the Makefile's
+# "full requires KVM; not available on Apple Silicon < M3").
+# vmType: "vz"
+# nestedVirtualization: true
+cpus: 4
+memory: "8GiB"
+disk: "100GiB"
+
+mounts:
+  - location: "~"
+    writable: true
+
+# slapd (389) and the FMS test Postgres (5432) listen briefly during
+# provisioning and during `make test-fms`; both are VM-local test fixtures, and
+# another Lima instance may already forward those ports on the host — never
+# forward them.
+portForwards:
+  - guestPort: 389
+    ignore: true
+  - guestPort: 5432
+    ignore: true
+
+provision:
+  # Build/deploy dependencies, group memberships, and the kernel sysctls that
+  # the deploy pre-flight checks (emitted by scripts/render.py into
+  # build/incus-commands.sh and run by scripts/deploy.sh). python3-venv lets
+  # `make install` build the .venv that supplies the render/test/lint Python
+  # deps (jinja2, pyyaml, pytest, ruff); jq backs scripts/wait-ready.sh;
+  # shellcheck and yamllint back `make lint`.
+  - mode: system
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y \
+        make \
+        python3-venv \
+        incus dnsmasq-base btrfs-progs \
+        musl-tools \
+        slapd ldap-utils \
+        postgresql \
+        shellcheck yamllint \
+        jq \
+        curl ca-certificates build-essential pkg-config
+      # slapd and postgresql both install a running, package-seeded service, but
+      # the FMS tests spawn their own private instances against throwaway /tmp
+      # data (start-test-ldap.sh, start-test-postgres.sh). The package services
+      # must therefore be stopped — postgresql so its default cluster frees the
+      # port the ephemeral test cluster binds. slapd ships as an LSB init service
+      # whose `disable` removes boot symlinks but does not stop the running
+      # daemon, so the stop is a separate command.
+      systemctl disable slapd 2>/dev/null || true
+      systemctl stop slapd 2>/dev/null || true
+      # The packaged slapd AppArmor profile confines slapd to /etc/ldap and
+      # /var/lib/ldap; the FMS LDAP test fixture runs slapd from /tmp
+      # (start-test-ldap.sh), which the profile blocks (a silent empty-log
+      # failure). Disable it so the fixture starts with no manual step. Guarded
+      # for idempotency and for a base image without the profile.
+      if [ -f /etc/apparmor.d/usr.sbin.slapd ] && [ ! -e /etc/apparmor.d/disable/usr.sbin.slapd ]; then
+        ln -sf /etc/apparmor.d/usr.sbin.slapd /etc/apparmor.d/disable/
+        apparmor_parser -R /etc/apparmor.d/usr.sbin.slapd 2>/dev/null || true
+      fi
+      systemctl disable postgresql 2>/dev/null || true
+      systemctl stop postgresql 2>/dev/null || true
+      # Add the user to incus-admin so `incus` works without sudo. A session only
+      # picks up a new group at a fresh login; the guarded reboot at the end of
+      # provisioning provides that, so every later session (interactive and
+      # scripted alike) has the group active — no per-session workaround needed.
+      usermod -aG incus-admin "{{.User}}"
+      cat > /etc/sysctl.d/90-incus.conf <<'EOF'
+      kernel.keys.maxkeys = 2000
+      kernel.keys.maxbytes = 2000000
+      fs.inotify.max_user_instances = 1048576
+      fs.inotify.max_user_watches = 1048576
+      vm.max_map_count = 262144
+      EOF
+      sysctl --system >/dev/null
+      # Initialise the Incus daemon — a storage pool and a default-profile root
+      # disk — so the deploy's first `incus init`/launch works. A fresh VM has
+      # incus installed but no storage, so launches otherwise fail with "No root
+      # device". Idempotent: skip if already initialised (a rerun).
+      #
+      # The pool uses the btrfs driver, which is copy-on-write: Incus unpacks
+      # each image once into an image volume and creates every instance as a
+      # snapshot of it, rather than writing a full root filesystem per instance
+      # on every deploy. btrfs is part of the mainline kernel and uses the
+      # ordinary page cache. zfs would add the zfsutils-linux package, a
+      # separate cache (the ARC) competing for the VM's 8GiB, and a dependency
+      # on Ubuntu's kernel packages for its module. The pool is a sparse loop file
+      # (/var/lib/incus/disks/default.img) on the VM disk, so no host-side disk
+      # is needed; 60GiB is its ceiling and leaves about 40GiB of the 100GiB disk
+      # for the OS, swap, Rust build output, and the image store. The guard
+      # never changes an existing pool's driver; recreate the VM to change it.
+      if ! incus storage show default >/dev/null 2>&1; then
+        printf '%s\n' \
+          'config: {}' \
+          'networks: []' \
+          'storage_pools:' \
+          '  - name: default' \
+          '    driver: btrfs' \
+          '    config:' \
+          '      size: 60GiB' \
+          'profiles:' \
+          '  - name: default' \
+          '    devices:' \
+          '      root:' \
+          '        path: /' \
+          '        pool: default' \
+          '        type: disk' \
+          | incus admin init --preseed
+      fi
+
+  # Rust toolchain + musl target for the sim-host image build.
+  - mode: user
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      # The release pinned in the repository-root rust-toolchain.toml. This
+      # script runs outside the repository, where that file does not apply.
+      if ! command -v cargo >/dev/null 2>&1; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+          | sh -s -- -y --default-toolchain 1.98.1
+      fi
+      # A cargo from a non-rustup source (e.g. a future base image's apt
+      # package) has no ~/.cargo/env and no rustup, so guard both to avoid
+      # aborting the provision under `set -e`.
+      [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+      # Static-musl target matching the VM architecture; build-sim-image.sh
+      # compiles the sim binary as ${ARCH}-unknown-linux-musl.
+      if command -v rustup >/dev/null 2>&1; then
+        rustup target add "$(uname -m)-unknown-linux-musl"
+      fi
+
+  # 4 GB of swap, to absorb short memory peaks — chiefly the linker during the
+  # Rust test builds — that the running deployment otherwise leaves no room for:
+  # with Suricata on all three firewalls, the instances use about 4 GB of the 8,
+  # and without swap the kernel kills the linker (`ld terminated with signal 9`).
+  # A low swappiness keeps the deployment's working set in memory, so swap is
+  # used under pressure rather than in normal running. Idempotent, since every
+  # provisioning step runs at each start.
+  - mode: system
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      if [ ! -f /swapfile ]; then
+        fallocate -l 4G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile >/dev/null
+      fi
+      swapon --show=NAME --noheadings | grep -qx /swapfile || swapon /swapfile
+      grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      echo 'vm.swappiness = 10' > /etc/sysctl.d/91-swap.conf
+      sysctl -q -p /etc/sysctl.d/91-swap.conf
+
+  # A short shell prompt: host and current directory name only
+  # (`lima-ravensport:RavensPort$`), since the repository's mounted path is
+  # long. Ubuntu's default ~/.bashrc builds PS1 (coloured on a 256-colour
+  # terminal, with an xterm title prefix), so a line appended after it edits
+  # that PS1 in place, removing `\u@` and replacing the full path `\w` with
+  # the directory name `\W`, which keeps the colours and the title. Any
+  # earlier line carrying the marker is removed first, so the file holds one.
+  - mode: user
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      touch "$HOME/.bashrc"
+      sed -i '/# ravensport-prompt$/d' "$HOME/.bashrc"
+      cat >> "$HOME/.bashrc" <<'EOF'
+      PS1=${PS1//\\u@/}; PS1=${PS1//\\w/\\W} # ravensport-prompt
+      EOF
+
+  # The SSH control master Lima opens during provisioning predates the
+  # incus-admin group add above, so every session over it lacks the group.
+  # Reboot once so Lima reconnects with a fresh login that has the group — for
+  # interactive and scripted sessions alike. This is the last provision step, so
+  # all other provisioning has completed; the marker makes it fire at most once
+  # (a later `limactl start` finds the marker and does not loop).
+  - mode: user
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      marker="$HOME/.ravensport-provisioned"
+      [ -e "$marker" ] && exit 0
+      touch "$marker"
+      sudo reboot
+
