@@ -1,0 +1,20 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh
+# shellcheck disable=SC2034  # service variables are consumed by openrc-run
+# Networking step (sim-network.md §2/§7): load the actor packet filter, then
+# plumb interface addresses and source policy routing. A one-shot that runs
+# before the sim and HAProxy services so their binds and source addresses
+# resolve. Runs as root: it is the only step needing CAP_NET_ADMIN, and it
+# completes before either listener accepts.
+
+description="Plumb sim-host interfaces and source policy routing"
+
+depend() {
+    before sim haproxy
+}
+
+start() {
+    ebegin "Configuring sim-host network interfaces"
+    /usr/local/bin/sim-net.sh
+    eend $? "Failed to configure sim-host interfaces"
+}

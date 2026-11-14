@@ -1,0 +1,46 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh
+# shellcheck disable=SC2034  # service variables are consumed by openrc-run
+# The simulator service (sim-network.md §7). Runs the static-musl `sim` binary
+# as a non-root user; it binds only loopback ports, so it holds no
+# capabilities.
+#
+# The service is deliberately NOT supervised: on a crash the process is left
+# dead and OpenRC reports the service as "crashed" rather than respawning it. A
+# respawn would reset the physical model (the tank refills to its start volume)
+# and continue generating traffic, burying the panic that stopped the run behind
+# a fresh, healthy-looking sim. Leaving it stopped preserves the failure for the
+# dashboard and for post-mortem inspection. Restart is a manual `rc-service sim
+# start` (or a redeploy).
+#
+# Standard output and error are written to /var/log/sim.log (a tmpfs, §8), not
+# the container console: start-stop-daemon's console output is not retained, so a
+# crash would otherwise leave no trace. Both streams go to the one file because
+# the two halves of a crash are split across them — the Rust panic prints to
+# stderr, the orchestrator's shutdown `cause=` (a tracing event) to stdout.
+#
+# A stop sends SIGTERM, on which the sim comes to rest and writes its checkpoint
+# to /run/sim/checkpoint.json (sim.md §9.1). Coming to rest can take as long as
+# a fill or an audit session, so SIGKILL follows only after an hour; a sim
+# killed then has written no checkpoint (sim-network.md §7).
+
+description="RavensPort physics simulator"
+
+command="/usr/local/bin/sim"
+command_user="sim:sim"
+command_background="yes"
+pidfile="/run/sim.pid"
+output_log="/var/log/sim.log"
+error_log="/var/log/sim.log"
+retry="TERM/3600/KILL/5"
+
+depend() {
+    need sim-net
+    need haproxy
+}
+
+# The run directory, on the /run tmpfs, to which the sim writes its checkpoint
+# and in which it marks an accepted checkpoint.
+start_pre() {
+    checkpath --directory --owner sim:sim --mode 0750 /run/sim
+}

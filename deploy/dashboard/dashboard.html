@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RavensPort — deployment monitor</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1a1d21; --muted: #6b7280;
+    --line: #e3e6ea; --accent: #2f6f4f; --up: #1f9d55; --down: #d64545;
+    --warn: #d69028; --fuel: #3a7bd5; --chip: #eef1f4;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a; --panel: #1c2024; --ink: #e6e9ec; --muted: #9aa4ad;
+      --line: #2a2f35; --accent: #4fae7f; --up: #3fca77; --down: #f0645f;
+      --warn: #e6a94a; --fuel: #63a0ee; --chip: #262b31;
+    }
+  }
+  :root[data-theme="dark"] {
+      --bg: #14171a; --panel: #1c2024; --ink: #e6e9ec; --muted: #9aa4ad;
+      --line: #2a2f35; --accent: #4fae7f; --up: #3fca77; --down: #f0645f;
+      --warn: #e6a94a; --fuel: #63a0ee; --chip: #262b31;
+  }
+  :root[data-theme="light"] {
+      --bg: #f5f6f8; --panel: #ffffff; --ink: #1a1d21; --muted: #6b7280;
+      --line: #e3e6ea; --accent: #2f6f4f; --up: #1f9d55; --down: #d64545;
+      --warn: #d69028; --fuel: #3a7bd5; --chip: #eef1f4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+         font-size: 14px; line-height: 1.4; }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+           padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header .sub { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  header .pill { margin-left: auto; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+                 background: var(--chip); font-family: var(--mono); }
+  .wrap { padding: 18px 20px; display: grid; gap: 18px;
+          grid-template-columns: repeat(12, 1fr); max-width: 1280px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+           padding: 14px 16px; }
+  .panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
+              color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  .col-8 { grid-column: span 8; } .col-4 { grid-column: span 4; }
+  .col-12 { grid-column: span 12; }
+  @media (max-width: 860px) { .col-8, .col-4, .col-12, .rightcol { grid-column: span 12; } }
+
+  .banner { grid-column: span 12; background: color-mix(in srgb, var(--down) 14%, var(--panel));
+            border: 1px solid var(--down); color: var(--ink); border-radius: 10px;
+            padding: 10px 14px; font-family: var(--mono); font-size: 12px; }
+
+  /* simulator panel */
+  .simstate { font-family: var(--mono); font-size: 12px; margin-bottom: 10px; }
+  .simstate .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                   margin-right: 7px; vertical-align: middle; }
+  .dot.up { background: var(--up); } .dot.down { background: var(--down); }
+  .dot.idle { background: var(--muted); }
+  .simcrash { background: color-mix(in srgb, var(--down) 14%, var(--panel));
+              border: 1px solid var(--down); border-radius: 8px; padding: 10px 12px;
+              margin-bottom: 10px; }
+  .simcrash .why { font-family: var(--mono); font-size: 12px; color: var(--ink);
+                   margin-top: 5px; word-break: break-word; }
+  .simlog { font-family: var(--mono); font-size: 11px; line-height: 1.5; white-space: pre-wrap;
+            word-break: break-word; background: var(--chip); border: 1px solid var(--line);
+            border-radius: 8px; padding: 10px 12px; max-height: 340px; overflow-y: auto; margin: 0; }
+
+  /* fleet grid */
+  .zone { margin-bottom: 4px; }
+  .zone-name { font-family: var(--mono); font-size: 11px; color: var(--muted);
+               margin: 10px 0 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .nodes { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+  .node { border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px;
+          cursor: pointer; transition: border-color .15s, background .15s; }
+  .node:hover { border-color: var(--accent); }
+  .node.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+  .node .top { display: flex; align-items: center; gap: 7px; }
+  .node .exp { margin-left: auto; color: var(--muted); font-family: var(--mono);
+               font-size: 12px; }
+  .node .nm { font-family: var(--mono); font-weight: 600; font-size: 13px; }
+  .node .metrics { color: var(--muted); font-family: var(--mono); font-size: 11px;
+                   margin-top: 5px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.up { background: var(--up); } .dot.down { background: var(--down); }
+  .dot.unknown { background: var(--warn); }
+
+  /* tank */
+  .tank-vol { font-family: var(--mono); font-size: 34px; font-weight: 650; line-height: 1; }
+  .tank-vol small { font-size: 15px; color: var(--muted); font-weight: 500; }
+  .gauge { position: relative; height: 14px; border-radius: 7px; background: var(--chip);
+           overflow: hidden; margin: 14px 0 6px; }
+  .gauge .fill { position: absolute; inset: 0 auto 0 0; background: var(--fuel);
+                 border-radius: 7px; transition: width .5s ease; }
+  .gauge .mark { position: absolute; top: -3px; bottom: -3px; width: 2px; }
+  .gauge .mark.low { background: var(--down); } .gauge .mark.high { background: var(--warn); }
+  .scale { display: flex; justify-content: space-between; color: var(--muted);
+           font-family: var(--mono); font-size: 10px; }
+  .kv { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+        font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .kv b { color: var(--ink); font-weight: 600; }
+  .chartwrap { position: relative; margin-top: 14px; }
+  svg.level { width: 100%; height: auto; display: block; }
+  svg.level .axis { stroke: var(--line); stroke-width: 1; }
+  svg.level .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; opacity: .7; }
+  svg.level .line { fill: none; stroke: var(--fuel); stroke-width: 2;
+                    stroke-linejoin: round; stroke-linecap: round; }
+  svg.level .tick { fill: var(--muted); font-family: var(--mono); font-size: 13px; }
+  svg.level .end { fill: var(--fuel); }
+  svg.level .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  svg.level .overlay { fill: transparent; }
+  svg.level .overlay.pan { cursor: grab; }
+  svg.level .overlay.pan:active { cursor: grabbing; }
+  svg.level .overlay.xaxis { cursor: ew-resize; }
+  .lvlhint { color: var(--muted); font-family: var(--mono); font-size: 10px; margin-top: 6px; }
+  .lvltip { position: absolute; pointer-events: none; transform: translate(-50%, -115%);
+            background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+            padding: 4px 8px; font-family: var(--mono); font-size: 11px; white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,.18); display: none; z-index: 5; }
+  .lvltip b { color: var(--fuel); }
+
+  /* job */
+  .badge { display: inline-block; font-family: var(--mono); font-size: 11px;
+           padding: 2px 9px; border-radius: 999px; background: var(--chip); }
+  .badge.live { background: color-mix(in srgb, var(--fuel) 22%, var(--panel)); color: var(--fuel); }
+  .badge.done { background: color-mix(in srgb, var(--up) 20%, var(--panel)); color: var(--up); }
+  .job-line { font-family: var(--mono); font-size: 15px; margin-top: 6px; }
+
+  /* authentication */
+  .rightcol { grid-column: span 4; display: flex; flex-direction: column; gap: 18px; }
+  .authlist { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+  .authrow { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; }
+  .authrow .at { color: var(--muted); }
+  .authrow .u { font-weight: 600; }
+  .rolebadge { margin-left: auto; font-size: 10px; padding: 1px 7px; border-radius: 999px;
+               background: var(--chip); color: var(--muted); }
+  .rolebadge.operator { color: var(--fuel); background: color-mix(in srgb, var(--fuel) 16%, var(--panel)); }
+  .rolebadge.admin { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, var(--panel)); }
+
+  /* alarm */
+  .alarm { font-family: var(--mono); font-size: 13px; padding: 6px 10px; border-radius: 8px;
+           background: var(--chip); display: inline-flex; gap: 8px; align-items: center; }
+  .alarm.active { background: color-mix(in srgb, var(--down) 18%, var(--panel)); color: var(--down); }
+  .alarm.clear { color: var(--up); }
+
+  /* tx */
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px;
+       border-bottom: 1px solid var(--line); font-size: 11px; }
+  td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: none; }
+  .k-dispense { color: var(--fuel); } .k-fill { color: var(--accent); }
+  .k-bdn { color: var(--muted); } .num { text-align: right; }
+  tr.txrow { cursor: pointer; }
+  tr.txrow:hover td { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+  tr.txrow.sel td { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+  tr.txdetail td { padding: 0; border-bottom: 1px solid var(--line); }
+  .dgrid { display: grid; gap: 6px 20px; padding: 12px 8px 14px;
+           grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .dgrid .f .l { color: var(--muted); font-size: 10px; text-transform: uppercase;
+                 letter-spacing: .4px; }
+  .dgrid .f .v { font-family: var(--mono); font-size: 12px; }
+  .rec.ok { color: var(--up); } .rec.warn { color: var(--warn); }
+  .stat-row { display: flex; gap: 22px; flex-wrap: wrap; }
+  .stat .v { font-family: var(--mono); font-size: 22px; font-weight: 650; }
+  .stat .l { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  .empty { color: var(--muted); font-family: var(--mono); font-size: 12px; padding: 8px 0; }
+
+  /* connection drawer */
+  .drawer { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .drawer .dhead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .drawer .dhead .t { font-family: var(--mono); font-weight: 600; font-size: 13px; }
+  .drawer .dhead .src { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .drawer .close { margin-left: auto; cursor: pointer; color: var(--muted);
+                   font-family: var(--mono); font-size: 12px; border: 1px solid var(--line);
+                   border-radius: 6px; padding: 2px 9px; background: none; }
+  .drawer .close:hover { color: var(--ink); border-color: var(--accent); }
+  .st { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 4px; }
+  .st.ESTAB { background: color-mix(in srgb, var(--up) 20%, var(--panel)); color: var(--up); }
+  .st.LISTEN { background: var(--chip); color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>RavensPort</h1>
+  <span class="sub">deployment monitor</span>
+  <span class="pill" id="clock">connecting…</span>
+</header>
+<div class="wrap" id="wrap">
+  <div class="empty col-12">Loading snapshot…</div>
+</div>
+
+<script>
+const CAP = 50000;
+const fmtL = n => Math.round(n).toLocaleString("en-GB");
+const rate = b => b == null ? "—" : (b < 1024 ? b.toFixed(0)+" B/s"
+                 : b < 1048576 ? (b/1024).toFixed(1)+" kB/s" : (b/1048576).toFixed(1)+" MB/s");
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+// Single-series change-over-time line with litre (Y) and time (X) axes.
+const kL = v => (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + "k" : Math.round(v).toString());
+
+function levelChart(all) {
+  if (!all || all.length < 2)
+    return `<div class="empty">not enough readings to plot yet</div>`;
+  lvlBuf = all;
+  // Auto view follows the full buffer: first reading on the left, latest on the
+  // right, the scale widening as history accrues. Any manual pan/rescale clears
+  // the flag and freezes the window until double-click resets it.
+  if (lvlAuto) lvlView = { span: lvlBuf.length, offset: 0 };
+  clampView();
+  const span = Math.min(lvlView.span, lvlBuf.length);
+  const hint = lvlView.offset > 0 || span < lvlBuf.length
+    ? `showing ${span} of ${lvlBuf.length} readings · drag axis ↔ to rescale · drag plot to pan · double-click to reset`
+    : `showing all ${lvlBuf.length} readings · drag the time axis ↔ to rescale · drag the plot to pan`;
+  return `<div class="chartwrap">
+    <div id="lvlHost">${buildLevelSVG(visibleSlice())}</div>
+    <div class="lvltip" id="lvlTip"></div>
+    <div class="lvlhint">${hint}</div>
+  </div>`;
+}
+
+function clampView() {
+  const n = lvlBuf.length;
+  if (lvlView.span == null) lvlView.span = n;
+  lvlView.span = Math.max(3, Math.min(lvlView.span, n));
+  lvlView.offset = Math.max(0, Math.min(lvlView.offset || 0, n - 2));
+}
+
+function visibleSlice() {
+  const n = lvlBuf.length;
+  if (n < 2) return lvlBuf.slice();
+  const span = Math.max(2, Math.min(lvlView.span || n, n));
+  const end = Math.max(2, n - lvlView.offset);
+  const start = Math.max(0, end - span);
+  return lvlBuf.slice(start, end);
+}
+
+function buildLevelSVG(pts) {
+  if (!pts || pts.length < 2) return `<div class="empty">no readings in this range</div>`;
+  const W = 600, H = 186, mL = 52, mR = 14, mT = 24, mB = 26;
+  const pw = W - mL - mR, ph = H - mT - mB, n = pts.length;
+  const vals = pts.map(p => p.v);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (hi - lo < 1) { lo -= 50; hi += 50; }
+  else { const pad = (hi - lo) * 0.12; lo -= pad; hi += pad; }
+  const X = i => mL + (i / (n - 1)) * pw;
+  const Y = v => mT + (1 - (v - lo) / (hi - lo)) * ph;
+
+  const yTicks = [lo, (lo + hi) / 2, hi];
+  const grid = yTicks.map(v => {
+    const y = Y(v).toFixed(1);
+    return `<line class="grid" x1="${mL}" y1="${y}" x2="${W - mR}" y2="${y}"/>
+      <text class="tick" x="${mL - 8}" y="${y}" text-anchor="end" dominant-baseline="middle">${kL(v)}</text>`;
+  }).join("");
+
+  const xIdx = [0, Math.floor((n - 1) / 2), n - 1];
+  const anchors = ["start", "middle", "end"];
+  const xlabels = xIdx.map((i, k) =>
+    `<text class="tick" x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="${anchors[k]}">${esc(pts[i].t)}</text>`
+  ).join("");
+
+  const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(" ");
+  const last = pts[n - 1];
+  window.__lvl = { pts, W, H, mL, mR, mT, mB, pw, ph, n, lo, hi };
+
+  return `<svg id="lvlSvg" class="level" viewBox="0 0 ${W} ${H}"
+       aria-label="Tank 01 level over time, litres" ondblclick="resetLevel()">
+    ${grid}
+    <line class="axis" x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT + ph}"/>
+    <line class="axis" x1="${mL}" y1="${mT + ph}" x2="${W - mR}" y2="${mT + ph}"/>
+    <text class="tick" x="4" y="14" font-size="11">litres</text>
+    ${xlabels}
+    <polyline class="line" points="${line}"/>
+    <circle class="end" cx="${X(n - 1).toFixed(1)}" cy="${Y(last.v).toFixed(1)}" r="3.5"/>
+    <g id="lvlHover" style="display:none">
+      <line class="cross" id="lvlCrossX" y1="${mT}" y2="${mT + ph}"/>
+      <circle class="end" id="lvlDot" r="3.5"/>
+    </g>
+    <rect class="overlay pan" x="${mL}" y="${mT}" width="${pw}" height="${ph}"
+          onmousemove="hoverLevel(event)" onmouseleave="hideHover()"
+          onmousedown="startPan(event)"/>
+    <rect class="overlay xaxis" x="${mL}" y="${mT + ph}" width="${pw}" height="${mB}"
+          onmousedown="startRescale(event)"/>
+  </svg>`;
+}
+
+function redrawLevel() {
+  const host = document.getElementById("lvlHost");
+  if (host) host.innerHTML = buildLevelSVG(visibleSlice());
+}
+function resetLevel() {
+  lvlAuto = true;
+  lvlView = { span: lvlBuf.length, offset: 0 };
+  redrawLevel();
+}
+
+// Client px per viewBox unit; null if the chart isn't mounted.
+function _svgScale() {
+  const g = window.__lvl, svg = document.getElementById("lvlSvg");
+  if (!g || !svg) return null;
+  const r = svg.getBoundingClientRect();
+  return { g, r, scale: r.width / g.W };
+}
+
+// Drag on the plot body: pan. Drag right reveals older readings.
+function startPan(e) {
+  const s = _svgScale(); if (!s) return;
+  e.preventDefault();
+  lvlDragging = true;
+  lvlAuto = false;  // manual pan freezes the window until double-click reset
+  const sx = e.clientX, startOffset = lvlView.offset;
+  const span = Math.min(lvlView.span, lvlBuf.length), plotPx = s.g.pw * s.scale;
+  const move = ev => {
+    const dPts = Math.round(((ev.clientX - sx) / plotPx) * span);
+    lvlView.offset = startOffset + dPts;
+    clampView(); redrawLevel();
+  };
+  _bindDrag(move);
+}
+
+// Drag on the time axis: rescale (zoom). Drag right → zoom out, left → zoom in.
+function startRescale(e) {
+  const s = _svgScale(); if (!s) return;
+  e.preventDefault();
+  lvlDragging = true;
+  lvlAuto = false;  // manual rescale freezes the window until double-click reset
+  const sx = e.clientX, startSpan = Math.min(lvlView.span, lvlBuf.length);
+  const plotPx = s.g.pw * s.scale;
+  const move = ev => {
+    const factor = Math.pow(4, (ev.clientX - sx) / plotPx);
+    lvlView.span = Math.round(startSpan * factor);
+    clampView(); redrawLevel();
+  };
+  _bindDrag(move);
+}
+
+// Bind a drag to window so it survives the SVG being re-rendered under it.
+function _bindDrag(move) {
+  const up = () => {
+    lvlDragging = false;
+    window.removeEventListener("mousemove", move);
+    window.removeEventListener("mouseup", up);
+  };
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", up);
+}
+
+function hoverLevel(evt) {
+  if (lvlDragging) return;
+  const s = _svgScale(); if (!s) return;
+  const g = s.g;
+  const vx = (evt.clientX - s.r.left) / s.scale;
+  let frac = (vx - g.mL) / g.pw;
+  frac = Math.max(0, Math.min(1, frac));
+  const i = Math.round(frac * (g.n - 1));
+  const p = g.pts[i];
+  const x = g.mL + (i / (g.n - 1)) * g.pw;
+  const y = g.mT + (1 - (p.v - g.lo) / (g.hi - g.lo)) * g.ph;
+  document.getElementById("lvlCrossX").setAttribute("x1", x);
+  document.getElementById("lvlCrossX").setAttribute("x2", x);
+  const dot = document.getElementById("lvlDot");
+  dot.setAttribute("cx", x); dot.setAttribute("cy", y);
+  document.getElementById("lvlHover").style.display = "";
+  const tip = document.getElementById("lvlTip");
+  tip.innerHTML = `${esc(p.t)} &nbsp; <b>${fmtL(p.v)} L</b>`;
+  tip.style.left = (x * s.scale) + "px";
+  tip.style.top = (y * s.scale) + "px";
+  tip.style.display = "";
+}
+function hideHover() {
+  const h = document.getElementById("lvlHover");
+  const t = document.getElementById("lvlTip");
+  if (h) h.style.display = "none";
+  if (t) t.style.display = "none";
+}
+
+function nodeCard(nd) {
+  const cls = nd.up ? "up" : (nd.status === "Unknown" ? "unknown" : "down");
+  const m = [];
+  if (nd.cpu_pct != null) m.push(`cpu ${nd.cpu_pct}%`);
+  if (nd.mem_mb != null) m.push(`${nd.mem_mb >= 1024 ? (nd.mem_mb/1024).toFixed(1)+"G" : nd.mem_mb+"M"}`);
+  if (nd.up) m.push(`▲${rate(nd.tx_rate)}`, `▼${rate(nd.rx_rate)}`);
+  else m.push(nd.status.toLowerCase());
+  const sel = nd.name === selected ? " sel" : "";
+  return `<div class="node${sel}" onclick="selectNode('${esc(nd.name)}')"
+      title="throughput across this node's NICs (▲ send / ▼ receive), from Incus byte counters; click for live connections">
+    <div class="top"><span class="dot ${cls}"></span>
+      <span class="nm">${esc(nd.name)}</span>
+      <span class="exp">${nd.name === selected ? "▾" : "▸"}</span></div>
+    <div class="metrics">${m.map(esc).join("<span></span>")}</div></div>`;
+}
+
+function connDrawer(detail) {
+  if (!detail) return "";
+  let body;
+  if (detail.error) {
+    body = `<div class="empty">${esc(detail.error)}</div>`;
+  } else if (!detail.conns.length) {
+    body = `<div class="empty">no established or listening TCP sockets</div>`;
+  } else {
+    const rows = detail.conns.map(c => `<tr>
+      <td><span class="st ${c.state}">${c.state}</span></td>
+      <td>${esc(c.local)}</td>
+      <td>${c.state === "ESTAB" ? esc(c.peer) : "—"}</td>
+      <td>${esc(c.proc || "")}</td></tr>`).join("");
+    body = `<table><thead><tr><th>state</th><th>local</th><th>peer</th><th>process</th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  return `<div class="drawer"><div class="dhead">
+      <span class="t">${esc(detail.node)}</span>
+      <span class="src">live TCP sockets · ${esc(detail.tool || "n/a")} via incus exec</span>
+      <button class="close" onclick="selectNode(null)">close ✕</button></div>
+    ${body}</div>`;
+}
+
+function fleetPanel(fleet, apps, detail) {
+  if (fleet.error) return `<div class="panel col-12"><h2>Fleet</h2>
+    <div class="empty">incus unavailable: ${esc(fleet.error)}</div></div>`;
+  const zones = {};
+  for (const nd of fleet.nodes) (zones[nd.zone] ??= []).push(nd);
+  let html = `<div class="panel col-12"><h2>Fleet &nbsp;·&nbsp;
+    FMS ${apps.fms.up ? "●" : "○"} ${apps.fms.version ? "v"+esc(apps.fms.version) : ""}
+    &nbsp; HMI ${apps.hmi.up ? "●" : "○"}</h2>`;
+  const order = ["ot", "dmz", "it", "ext/dmz", "dmz/it", "ot/dmz", "other"];
+  const seen = Object.keys(zones).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  for (const z of seen) {
+    html += `<div class="zone"><div class="zone-name">${esc(z)}</div>
+      <div class="nodes">${zones[z].map(nodeCard).join("")}</div></div>`;
+  }
+  return html + connDrawer(detail) + "</div>";
+}
+
+function tankPanel(p, cap) {
+  const t = p.tank;
+  if (!t) return `<div class="panel col-8"><h2>Tank 01</h2>
+    <div class="empty">no ATG readings yet (FMS not polling, or DB unreachable)</div></div>`;
+  const pct = Math.max(0, Math.min(100, t.volume_l / cap * 100));
+  const alarmClear = !t.alarm || /^0*$/.test(t.alarm) || t.alarm === "------";
+  return `<div class="panel col-8"><h2>Tank 01 &nbsp;·&nbsp; ${cap.toLocaleString("en-GB")} L capacity</h2>
+    <div class="tank-vol">${fmtL(t.volume_l)} <small>L &nbsp;(${pct.toFixed(1)}%)</small></div>
+    <div class="gauge"><div class="fill" style="width:${pct}%"></div>
+      <div class="mark low" style="left:10%"></div>
+      <div class="mark high" style="left:95%"></div></div>
+    <div class="scale"><span>0</span><span>cavitation 10%</span><span>overfill 95%</span><span>${(cap/1000)}k</span></div>
+    ${levelChart(p.spark)}
+    <div class="kv">
+      <span>temp <b>${t.temp_c.toFixed(1)} °C</b></span>
+      <span>reading <b>${esc(t.at)}</b></span>
+      <span class="alarm ${alarmClear ? "clear" : "active"}">
+        i101 <b>${esc(t.alarm)}</b> ${alarmClear ? "clear" : "ALARM"}</span>
+    </div></div>`;
+}
+
+function jobPanel(p) {
+  const j = p.job;
+  let inner;
+  if (!j) inner = `<div class="empty">no jobs recorded yet</div>`;
+  else {
+    const badge = j.closed ? `<span class="badge done">closed</span>`
+                           : `<span class="badge live">in progress</span>`;
+    inner = `${badge}
+      <div class="job-line">${esc(j.type)} — ${esc(j.counterparty)}</div>
+      <div class="kv"><span>operator <b>${esc(j.operator)}</b></span>
+        <span>opened <b>${esc(j.at)}</b></span></div>`;
+  }
+  return `<div class="panel col-4"><h2>Current job</h2>${inner}</div>`;
+}
+
+function authPanel(p) {
+  const logins = p.logins || [];
+  const list = logins.map(r => `<div class="authrow">
+    <span class="at">${esc(r.at)}</span>
+    <span class="u">${esc(r.user)}</span>
+    <span class="rolebadge ${r.role === "admin" ? "admin" : "operator"}">${esc(r.role)}</span>
+  </div>`).join("");
+  const body = list || `<div class="empty">no logins recorded yet</div>`;
+  const s = p.sessions || {}, cards = p.cards_active;
+  return `<div class="panel col-4"><h2>Authentication &nbsp;·&nbsp; successful logins</h2>
+    <div class="authlist">${body}</div>
+    <div class="stat-row" style="margin-top:14px">
+      <div class="stat"><div class="v">${s.count ?? "—"}</div><div class="l">logins total</div></div>
+      <div class="stat"><div class="v">${cards ?? "—"}</div><div class="l">active cards</div></div>
+    </div></div>`;
+}
+
+const L = v => v == null ? null : fmtL(v) + " L";
+function durHMS(a, b) {
+  const p = s => { const [h, m, x] = s.split(":").map(Number); return h*3600 + m*60 + x; };
+  if (!a || !b) return null;
+  let d = p(b) - p(a);
+  if (d < 0) return null;
+  return d >= 60 ? `${Math.floor(d/60)}m ${d%60}s` : `${d}s`;
+}
+function field(label, value) {
+  return value == null || value === "" ? ""
+    : `<div class="f"><div class="l">${esc(label)}</div><div class="v">${value}</div></div>`;
+}
+
+function txCounterparty(r) {
+  if (r.kind === "bdn") return (r.bdn ? esc(r.bdn) : "BDN") + (r.ref_party ? " → " + esc(r.ref_party) : "");
+  return esc(r.party || "—");
+}
+function txVolume(r) {
+  if (r.kind === "bdn") return "—";
+  if (r.kind === "dispense" && r.preset) return `${fmtL(r.volume)} / ${fmtL(r.preset)} L`;
+  return r.volume ? fmtL(r.volume) + " L" : "—";
+}
+
+function txDetail(r) {
+  const fs = [];
+  fs.push(field("transaction", esc(r.tx_id)));
+  fs.push(field("job", esc(r.job_id)));
+  if (r.opened || r.closed) {
+    const dur = durHMS(r.opened, r.closed);
+    fs.push(field("opened → closed",
+      `${esc(r.opened || "—")} → ${esc(r.closed || "—")}${dur ? " (" + dur + ")" : ""}`));
+  }
+  fs.push(field("preset", L(r.preset)));
+  fs.push(field(r.kind === "fill" ? "delivered" : "dispensed", r.volume ? L(r.volume) : null));
+  if (r.start_pulses != null && r.end_pulses != null) {
+    const dp = r.end_pulses - r.start_pulses;
+    fs.push(field("totaliser", `${r.start_pulses.toLocaleString("en-GB")} → ${r.end_pulses.toLocaleString("en-GB")} (Δ ${dp.toLocaleString("en-GB")} p ≈ ${fmtL(dp/100)} L)`));
+  }
+  if (r.atg_open != null || r.atg_close != null)
+    fs.push(field("tank open → close", `${L(r.atg_open) || "—"} → ${L(r.atg_close) || "—"}`));
+  // Reconciliation: metered volume vs the tank-level change the ATG saw.
+  if (r.atg_open != null && r.atg_close != null && r.volume) {
+    const tankDelta = Math.abs(r.atg_open - r.atg_close);
+    const diff = tankDelta - r.volume;
+    const ok = Math.abs(diff) <= Math.max(50, r.volume * 0.02);
+    fs.push(field("meter vs tank",
+      `<span class="rec ${ok ? "ok" : "warn"}">tank Δ ${fmtL(tankDelta)} L, meter ${fmtL(r.volume)} L `
+      + `(${diff >= 0 ? "+" : ""}${Math.round(diff)} L ${ok ? "✓" : "⚠"})</span>`));
+  }
+  fs.push(field("ticket", r.ticket ? esc(r.ticket) : null));
+  fs.push(field("tanker reg", r.tanker ? esc(r.tanker) : null));
+  fs.push(field("BDN", r.bdn ? esc(r.bdn) : null));
+  return `<tr class="txdetail"><td colspan="6"><div class="dgrid">${fs.join("")}</div></td></tr>`;
+}
+
+function txPanel(p) {
+  if (p.error) return `<div class="panel col-12"><h2>Transactions</h2>
+    <div class="empty">database unreachable: ${esc(p.error)}</div></div>`;
+  const s = p.tx || {}, feed = p.txfeed || [];
+  let rows = feed.map(r => {
+    const sel = r.tx_id === selectedTx;
+    const main = `<tr class="txrow${sel ? " sel" : ""}" onclick="toggleTx('${esc(r.tx_id)}')">
+      <td>${esc(r.at)}</td>
+      <td class="k-${r.kind}">${esc(r.kind)}</td>
+      <td>${txCounterparty(r)}</td>
+      <td>${esc(r.grade || "—")}</td>
+      <td class="num">${txVolume(r)}</td>
+      <td>${esc(r.operator || "—")}</td></tr>`;
+    return main + (sel ? txDetail(r) : "");
+  }).join("");
+  if (!rows) rows = `<tr><td colspan="6" class="empty">no transactions written yet</td></tr>`;
+  return `<div class="panel col-12"><h2>Transactions &nbsp;·&nbsp; database record (click a row for full detail)</h2>
+    <div class="stat-row" style="margin-bottom:14px">
+      <div class="stat"><div class="v">${s.total ?? 0}</div><div class="l">rows total</div></div>
+      <div class="stat"><div class="v">${s.dispenses ?? 0}</div><div class="l">dispenses</div></div>
+      <div class="stat"><div class="v">${s.fills ?? 0}</div><div class="l">fills</div></div>
+      <div class="stat"><div class="v">${esc(s.last ?? "—")}</div><div class="l">last write</div></div>
+    </div>
+    <table><thead><tr><th>time</th><th>kind</th><th>counterparty</th>
+      <th>grade</th><th class="num">volume</th><th>operator</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+}
+
+let selected = null;
+let selectedTx = null;
+let lvlBuf = [];                          // full level-history buffer from the snapshot
+let lvlView = { span: null, offset: 0 };  // visible points, and points back from newest
+let lvlAuto = true;                       // follow the whole buffer until the user pans/zooms
+let lvlDragging = false;                  // pause auto-refresh mid-drag
+let logStick = {};                        // per-log-pane: keep pinned to the newest line?
+
+function simPanel(sim) {
+  if (!sim) return "";
+  if (sim.error) return `<div class="panel col-12"><h2>Simulator</h2>
+    <div class="simstate"><span class="dot idle"></span>${esc(sim.error)}</div></div>`;
+  let state, dot;
+  if (sim.crashed) { state = "crashed — not restarted"; dot = "down"; }
+  else if (sim.running) { state = "running"; dot = "up"; }
+  else { state = "stopped"; dot = "idle"; }
+  let inner = `<div class="simstate"><span class="dot ${dot}"></span>sim process ${state}</div>`;
+  if (sim.crashed) {
+    inner += `<div class="simcrash"><strong>Simulator crashed</strong>`;
+    if (sim.cause) inner += `<div class="why">cause: ${esc(sim.cause)}</div>`;
+    if (sim.panic) inner += `<div class="why">${esc(sim.panic)}</div>`;
+    inner += `</div>`;
+  }
+  // The sim logs WARN and ERROR only (infra/sim/src/main.rs), so an empty log
+  // on a running process is the healthy state, not a missing feed. Say so:
+  // "(empty)" alone reads as a fault when it is the opposite.
+  const empty = sim.running
+    ? "(no output — the simulator logs warnings and errors only, so silence here means nothing has gone wrong)"
+    : "(sim.log empty)";
+  const log = (sim.log && sim.log.length) ? esc(sim.log.join("\n")) : empty;
+  return `<div class="panel col-12"><h2>Simulator &nbsp;·&nbsp; sim.log (tail)</h2>${inner}<pre class="simlog" id="log-sim">${log}</pre></div>`;
+}
+
+// Generic log-tail panel: the journal on the systemd-managed nodes and the
+// security monitoring output files. `id` is given explicitly rather than
+// derived from the title because it keys the scroll-position memory in tick(),
+// and must stay stable and whitespace-free.
+function logPanel(title, sub, id, data, empty = "(journal empty)") {
+  if (!data) return "";
+  if (data.error) return `<div class="panel col-12"><h2>${esc(title)} &nbsp;·&nbsp; ${esc(sub)}</h2>
+    <div class="simstate"><span class="dot idle"></span>${esc(data.error)}</div></div>`;
+  const log = (data.log && data.log.length) ? esc(data.log.join("\n")) : empty;
+  return `<div class="panel col-12"><h2>${esc(title)} &nbsp;·&nbsp; ${esc(sub)}</h2><pre class="simlog" id="${esc(id)}">${log}</pre></div>`;
+}
+
+async function fetchJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  return r.json();
+}
+
+async function tick() {
+  if (lvlDragging) return;  // don't rebuild the DOM out from under an active drag
+  try {
+    const d = await fetchJSON("/api/snapshot");
+    let detail = null;
+    if (selected) {
+      try { detail = await fetchJSON("/api/node?node=" + encodeURIComponent(selected)); }
+      catch (e) { detail = { node: selected, error: "connection query failed", conns: [] }; }
+    }
+    const parts = [];
+    if (d.fleet.error) parts.push(`<div class="banner">Incus not reachable — is this running inside the Lima VM? (${esc(d.fleet.error)})</div>`);
+    if (d.sim && d.sim.crashed) parts.push(`<div class="banner"><strong>Simulator crashed and was not restarted.</strong>${d.sim.cause ? " " + esc(d.sim.cause) : ""}</div>`);
+    parts.push(tankPanel(d.process, d.capacity_l || CAP));
+    parts.push(`<div class="rightcol">${jobPanel(d.process)}${authPanel(d.process)}</div>`);
+    parts.push(txPanel(d.process));
+    parts.push(simPanel(d.sim));
+    parts.push(logPanel("HMI", "hmi.service journal (tail)", "log-hmi", d.hmi_log));
+    parts.push(logPanel("FMS", "fms.service journal (tail)", "log-fms", d.fms_log));
+    parts.push(logPanel("Log server", "hist-01 · stores, agents and Grafana (tail)", "log-hist", d.hist_log));
+    parts.push(logPanel("Log server replica", "hist-dmz-01 · stores and Grafana (tail)", "log-hist-dmz", d.hist_dmz_log));
+    parts.push(logPanel("Security monitoring alerts", "siem-01 · alerts.json (tail)", "log-siem-alerts", d.siem_alerts, "(file empty)"));
+    parts.push(logPanel("Security monitoring archives", "siem-01 · archives.json (tail)", "log-siem-archives", d.siem_archives, "(file empty)"));
+    parts.push(fleetPanel(d.fleet, d.apps, detail));
+    // Logs read oldest-first, so the newest lines sit at the bottom. Remember
+    // which panes are pinned to the bottom (default yes), then restore that after
+    // the re-render so they follow new output without yanking a reader who has
+    // scrolled up to read history.
+    document.querySelectorAll(".simlog").forEach(el => {
+      logStick[el.id] = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    });
+    document.getElementById("wrap").innerHTML = parts.join("");
+    document.querySelectorAll(".simlog").forEach(el => {
+      if (logStick[el.id] !== false) el.scrollTop = el.scrollHeight;
+    });
+    document.getElementById("clock").textContent = "updated " + d.ts;
+  } catch (e) {
+    document.getElementById("clock").textContent = "poll failed";
+  }
+}
+
+function selectNode(name) {
+  selected = (name === selected || name === null) ? null : name;
+  tick();  // re-render immediately with the drawer opened/closed
+}
+
+function toggleTx(id) {
+  selectedTx = id === selectedTx ? null : id;
+  tick();
+}
+
+tick();
+setInterval(tick, 5000);
+</script>
+</body>
+</html>
