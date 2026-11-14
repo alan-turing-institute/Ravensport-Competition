@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT card_id, card_number, label, enrolled_at\n        FROM (\n            SELECT card_id, card_number, label, active, enrolled_at,\n                   ROW_NUMBER() OVER (PARTITION BY card_id ORDER BY enrolled_at DESC) AS rn\n            FROM card_table\n        ) t\n        WHERE rn = 1 AND active = true\n        ORDER BY enrolled_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "card_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "card_number",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "label",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "enrolled_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3c22ef04fa519190df457e4ed5028a597982826cc7aedca20bf97bc6a8810153"
+}

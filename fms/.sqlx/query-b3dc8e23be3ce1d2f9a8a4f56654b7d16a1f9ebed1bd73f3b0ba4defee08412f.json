@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO transactions\n           (transaction_id, job_id, operator, counterparty, grade,\n            ticket_number, delivered_volume_l, supplier, tanker_registration,\n            temperature_c, density_kg_per_l, temp_corrected_volume_l,\n            atg_volume_at_open_l, atg_volume_at_close_l,\n            opened_at, closed_at, created_at)\n           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Float8",
+        "Text",
+        "Text",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b3dc8e23be3ce1d2f9a8a4f56654b7d16a1f9ebed1bd73f3b0ba4defee08412f"
+}

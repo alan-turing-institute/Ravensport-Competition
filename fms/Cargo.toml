@@ -1,0 +1,79 @@
+[package]
+name = "fms"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "fms"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fms"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework and TLS
+axum = { version = "0.8", features = ["json", "macros"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+tower = { version = "0.5" }
+tower-http = { version = "0.6", features = ["trace"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rustls-pemfile = "2"
+# Client side of the syslog push (RFC 5425): TLS over the persistent connection,
+# validated against the same system trust store the HTTP pushes use (fms.md §3).
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+rustls-native-certs = "0.8"
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate"] }
+
+# Serialisation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Types
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Auth
+argon2 = { version = "0.5", features = ["password-hash"] }
+rand = "0.8"
+
+# LDAP (rustls, not tls-native/OpenSSL, matching this binary's own TLS
+# termination and its reqwest client below)
+ldap3 = { version = "0.11", default-features = false, features = ["sync", "tls-rustls"] }
+
+# Modbus
+tokio-modbus = { version = "0.9", default-features = false, features = ["tcp"] }
+
+# HTTP client (log server push). Native roots: hist-01's certificate is validated
+# against the CA root installed in the system trust store (fms.md §3). The
+# plain `rustls-tls` feature compiles in Mozilla's public roots and never reads
+# that store, so it rejects every internally issued certificate.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+[dev-dependencies]
+wiremock = "0.6"
+http-body-util = "0.1"
+# tests/hist_push_trust.rs: a throwaway CA + leaf certs generated in-process
+# with rcgen, as in hmi/tests/fms_tls.rs.
+rcgen = "0.13"
+# `test-util` enables `#[tokio::test(start_paused = true)]`, used by the
+# log-pusher give-up test so its inter-attempt backoffs advance instantly.
+tokio = { version = "1", features = ["test-util"] }
+# The sim's ATG console, used by the in-crate TLS contract test to prove the
+# FMS client parses the bytes the real console emits (guards against the two
+# implementations drifting). `time` supplies the SimClock start-epoch literal.
+sim = { path = "../infra/sim" }
+time = { version = "0.3", features = ["macros"] }
