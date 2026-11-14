@@ -14,8 +14,7 @@ Three platforms are defined.
   fork of the port tested on a Mac with an Apple processor: the `virt` machine type with high
   memory, the host's processor model, no default devices, Homebrew's aarch64
   firmware, no pinning, and saves as a stream with the bandwidth limit raised,
-  which paused the port for 1.7 s where mapped RAM paused it for 13 s. The
-  package has not yet run on the Mac.
+  which paused the port for 1.7 s where mapped RAM paused it for 13 s.
 - On an Intel Mac, whose guests are x86_64, HVF runs the Linux host's machine
   instead: the Q35 machine type, the host's processor model and QEMU's own
   x86_64 firmware, with no pinning and saves as a stream, as on a Mac with an

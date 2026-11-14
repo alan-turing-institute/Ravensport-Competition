@@ -105,7 +105,10 @@ def parse(argv: Sequence[str] | None = None) -> argparse.Namespace:
     create = commands.add_parser("create", help="start a living port")
     create.add_argument("name")
     create.add_argument(
-        "--base-disk", type=Path, required=True, help="a qcow2 disk, never written"
+        "--base-disk",
+        type=Path,
+        required=True,
+        help="a qcow2 or raw disk, never written",
     )
     create.add_argument(
         "--mac", required=True, help="the network card's address, as the base's"

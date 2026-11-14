@@ -356,7 +356,7 @@ class Manager:
             raise PortError("a living port runs in evaluation or in training, not both")
         for given in (volume, training_volume):
             if given is not None and not given.is_dir():
-                raise PortError(f"a volume is a directory: {given}")
+                raise PortError(f"no volume directory {given}")
         base = replace(base, disk=base.disk.expanduser().resolve())
         if not base.disk.is_file():
             raise PortError(f"no base disk {base.disk}")

@@ -260,12 +260,14 @@ def test_the_binaries_are_found_by_the_chain_names(tmp_path: Path) -> None:
     not chains.CATALOGUE.is_file(), reason="no chain catalogue: run make build-attacks"
 )
 def test_every_catalogued_stage_is_reviewed_and_takes_a_target() -> None:
-    """The reviewed table covers the whole library of stages, and names no
-    stage that the library has dropped."""
+    """Every catalogued stage is reviewed. With the source present, the
+    catalogue covers every reviewed stage; a source-free release may ship
+    only the chains that the episode runner can use."""
     catalogued = chains.load()
     names = {s.name for c in catalogued for s in c.stages}
     assert not [c.id for c in catalogued if c.unreviewed]
-    assert set(chains.REVIEWED) == names
+    if chains.source_files():
+        assert set(chains.REVIEWED) == names
 
 
 def reviewed_source(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:

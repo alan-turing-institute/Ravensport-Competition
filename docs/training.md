@@ -3,9 +3,10 @@
 Training mode runs an entry's defender in forks of a living port, so that each episode starts from the port's accumulated history and the training volume passes from each episode to the next. This guide gives the commands and the preparation of the base disk from which a living port starts. The living port manager runs each living port and each fork as a virtual machine under the Quick Emulator (QEMU), with the kernel-based virtual machine (KVM) on Linux or Apple's Hypervisor framework on macOS. The specification [`episodes.md`](../specs/competition/episodes.md) is the authority for living ports and forks.
 
 
-Training mode runs only in forks of a living port. The living port manager runs on the machine itself, outside the Incus host, from the repository's root. The command `create` starts a living port from a base disk, which the living port manager never writes, and deploys the port in it from the repository. `--training-volume` gives the first version of the training volume, and `--build` builds the images inside the living port before the deployment.
+Training mode runs only in forks of a living port. The living port manager runs on the machine itself, outside the Incus host, from the repository's root. The command `create` starts a living port from a base disk, which the living port manager never writes, and deploys the port in it from the repository. `--training-volume` gives the first version of the training volume, and `--build` builds the images inside the living port before the deployment. Make the training volume on the machine too; a volume made inside the Incus host stays in that guest.
 
 ```sh
+python3 competition/baselines/track_a/make_volume.py learning ~/volumes/learning
 python3 -m competition.living create lp1 --base-disk DISK --mac MAC --tree . \
     --training-volume ~/volumes/learning --build
 python3 -m competition.living loop lp1 --track A --type benign --forks 10
@@ -20,7 +21,7 @@ The living port manager makes a fork only when the machine has the fork's memory
 
 ## Prepare the base disk
 
-The base disk is a copy of the Incus host's disk, taken after the competition images are built in it. The copy holds Ubuntu 24.04 on the 100 GiB disk that [`deploy/lima.yaml`](../deploy/lima.yaml) gives the Incus host, with Incus, the build tools and the images. A living port boots from the copy with the network card's address of the Incus host, because the guest's network configuration matches that address. The living port manager signs in to the guest as the user that Lima created there, who has the name of your user on the machine, with Lima's key, `~/.lima/_config/user`. The options `--user` and `--key` take these by default.
+The base disk is a copy of the Incus host's disk, taken after the competition images are built in it. The copy holds Ubuntu 24.04 on the 100 GiB disk that [`deploy/lima.yaml`](../deploy/lima.yaml) gives the Incus host, with Incus, the build tools and the images. A living port boots from the copy with the network card's address of the Incus host, because the guest's network configuration matches that address. The living port manager signs in to the guest as the user that Lima created there, who has the name of your user on the machine, with Lima's key, `${LIMA_HOME:-$HOME/.lima}/_config/user`. The options `--user` and `--key` take these by default.
 
 On Linux with KVM:
 
@@ -40,7 +41,7 @@ On Linux with KVM:
    sudo systemctl mask --now apt-daily.timer apt-daily-upgrade.timer
    ```
 
-3. Inside the Incus host, read the network card's address. The value after `macaddress` is the address that `--mac` takes, and the address of `eth0` is the same.
+3. Inside the Incus host, read the network card's address. Give `--mac` the value after `macaddress` without its quotation marks. The address of `eth0` is the same.
 
    ```sh
    sudo grep macaddress /etc/netplan/50-cloud-init.yaml
@@ -54,16 +55,17 @@ On Linux with KVM:
    limactl stop ravensport           # on the machine
    ```
 
-5. On the machine, copy the Incus host's disk into one read-only qcow2 file. `qemu-img convert` writes a file that stands alone, without the backing file of Lima's disk. Lima keeps the disk in `~/.lima/ravensport/disk`, and Lima 1 named it `diffdisk`.
+5. On the machine, copy the Incus host's disk into one read-only qcow2 file. `qemu-img convert` writes a file that stands alone, without the backing file of Lima's disk. Lima keeps the disk under `$LIMA_HOME` when set, or `~/.lima` by default. Lima 1 named the disk `diffdisk`.
 
    ```sh
-   qemu-img convert -p -O qcow2 ~/.lima/ravensport/disk ~/ravensport-base.qcow2
+   qemu-img convert -p -O qcow2 "${LIMA_HOME:-$HOME/.lima}/ravensport/disk" ~/ravensport-base.qcow2
    chmod a-w ~/ravensport-base.qcow2
    ```
 
-6. Start a living port from the copy, with the address from step 3 in place of `MAC`.
+6. On the machine, from the repository's root, make the training volume if you have not already made it there. Then start a living port from the copy, with the address from step 3 in place of `MAC`. The volume's directory must be absent or empty when `make_volume.py` runs.
 
    ```sh
+   python3 competition/baselines/track_a/make_volume.py learning ~/volumes/learning
    python3 -m competition.living create lp1 --base-disk ~/ravensport-base.qcow2 \
        --mac MAC --tree . --training-volume ~/volumes/learning --build
    ```
@@ -87,7 +89,7 @@ On macOS with an Apple processor:
    sudo systemctl mask --now apt-daily.timer apt-daily-upgrade.timer
    ```
 
-3. Inside the Incus host, read the network card's address. The value after `macaddress` is the address that `--mac` takes, and the address of `eth0` is the same.
+3. Inside the Incus host, read the network card's address. Give `--mac` the value after `macaddress` without its quotation marks. The address of `eth0` is the same.
 
    ```sh
    sudo grep macaddress /etc/netplan/50-cloud-init.yaml
@@ -101,16 +103,17 @@ On macOS with an Apple processor:
    limactl stop ravensport           # on the machine
    ```
 
-5. On the machine, copy the Incus host's disk. On macOS, Lima runs the Incus host with Apple's `Virtualization.framework`, Lima's machine type `vz`, and keeps its disk in `~/.lima/ravensport/disk` as one raw file with no backing file. `cp -c` clones the file at once on the Mac's file system, and the clone takes no space until one of the two files changes. The base disk stays raw: the living port manager reads its format with `qemu-img info` and never writes it.
+5. On the machine, copy the Incus host's disk. On macOS, Lima runs the Incus host with Apple's `Virtualization.framework`, Lima's machine type `vz`, and keeps its disk as one raw file with no backing file, under `$LIMA_HOME` when set, or `~/.lima` by default. `cp -c` clones the file at once on the Mac's file system, and the clone takes no space until one of the two files changes. The base disk stays raw: the living port manager reads its format with `qemu-img info` and never writes it.
 
    ```sh
-   cp -c ~/.lima/ravensport/disk ~/ravensport-base.raw
+   cp -c "${LIMA_HOME:-$HOME/.lima}/ravensport/disk" ~/ravensport-base.raw
    chmod a-w ~/ravensport-base.raw
    ```
 
-6. Start a living port from the copy, with the address from step 3 in place of `MAC`.
+6. On the machine, from the repository's root, make the training volume if you have not already made it there. Then start a living port from the copy, with the address from step 3 in place of `MAC`. The volume's directory must be absent or empty when `make_volume.py` runs.
 
    ```sh
+   python3 competition/baselines/track_a/make_volume.py learning ~/volumes/learning
    python3 -m competition.living create lp1 --base-disk ~/ravensport-base.raw \
        --mac MAC --tree . --training-volume ~/volumes/learning --build
    ```
