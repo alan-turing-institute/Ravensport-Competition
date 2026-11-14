@@ -1,0 +1,21 @@
+# ── No self-update, no external lookups (narrative §4, deployment.md §6.1) ───
+#
+# No port host updates itself or contacts a service outside the port; the
+# department responsible for it applies updates in planned maintenance windows.
+# The stock Ubuntu timers below would otherwise reach the package archive, the
+# motd news server and the Ubuntu Pro servers on every boot. With no route out
+# they fail, and an unattended upgrade left in progress holds the host's
+# shutdown for up to 30 minutes. The timers are masked before the purge so that
+# no run of either apt timer holds the dpkg lock against it.
+incus exec "$BUILD_CTR" -- systemctl mask --now \
+    apt-daily.timer apt-daily-upgrade.timer motd-news.timer ua-timer.timer
+incus exec "$BUILD_CTR" -- systemctl stop apt-daily.service apt-daily-upgrade.service
+incus exec "$BUILD_CTR" -- apt-get purge -y -o DPkg::Lock::Timeout=600 unattended-upgrades
+# Nodes have no DNS server configured (deployment.md §2.1). systemd-resolved's
+# built-in fallback list would then send every lookup /etc/hosts does not
+# answer to public resolvers; an empty list leaves /etc/hosts as the only source.
+incus exec "$BUILD_CTR" -- mkdir -p /etc/systemd/resolved.conf.d
+incus exec "$BUILD_CTR" -- tee /etc/systemd/resolved.conf.d/90-ravensport.conf > /dev/null << 'EOF'
+[Resolve]
+FallbackDNS=
+EOF

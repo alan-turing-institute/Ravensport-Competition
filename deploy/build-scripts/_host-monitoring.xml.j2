@@ -1,0 +1,69 @@
+  <!-- File integrity monitoring (siem.md §2.1): the product's default
+       configured paths and ignore list, stated explicitly, and its 12-hour
+       schedule, which render.py divides by the compression factor
+       (siem.md §8.5). -->
+  <syscheck>
+    <disabled>no</disabled>
+    <frequency>{{ siem_schedules.file_integrity_s }}</frequency>
+    <scan_on_start>yes</scan_on_start>
+    <alert_new_files>yes</alert_new_files>
+    <auto_ignore frequency="10" timeframe="3600">no</auto_ignore>
+    <directories>/etc,/usr/bin,/usr/sbin</directories>
+    <directories>/bin,/sbin,/boot</directories>
+    <ignore>/etc/mtab</ignore>
+    <ignore>/etc/hosts.deny</ignore>
+    <ignore>/etc/mail/statistics</ignore>
+    <ignore>/etc/random-seed</ignore>
+    <ignore>/etc/random.seed</ignore>
+    <ignore>/etc/adjtime</ignore>
+    <ignore>/etc/httpd/logs</ignore>
+    <ignore>/etc/utmpx</ignore>
+    <ignore>/etc/wtmpx</ignore>
+    <ignore>/etc/cups/certs</ignore>
+    <ignore>/etc/dumpdates</ignore>
+    <ignore>/etc/svc/volatile</ignore>
+    <ignore type="sregex">.log$|.swp$</ignore>
+    <nodiff>/etc/ssl/private.key</nodiff>
+    <skip_nfs>yes</skip_nfs>
+    <skip_dev>yes</skip_dev>
+    <skip_proc>yes</skip_proc>
+    <skip_sys>yes</skip_sys>
+    <process_priority>10</process_priority>
+    <max_eps>50</max_eps>
+    <synchronization>
+      <enabled>yes</enabled>
+      <interval>5m</interval>
+      <max_eps>10</max_eps>
+    </synchronization>
+  </syscheck>
+
+  <!-- Inventory (siem.md §2.1): installed packages, listening ports, running
+       processes and network interfaces, and nothing else, on the hourly
+       schedule that render.py divides by the compression factor
+       (siem.md §8.5). -->
+  <wodle name="syscollector">
+    <disabled>no</disabled>
+    <interval>{{ siem_schedules.inventory_s }}s</interval>
+    <scan_on_start>yes</scan_on_start>
+    <hardware>no</hardware>
+    <os>no</os>
+    <network>yes</network>
+    <packages>yes</packages>
+    <ports all="no">yes</ports>
+    <processes>yes</processes>
+    <users>no</users>
+    <groups>no</groups>
+    <services>no</services>
+    <browser_extensions>no</browser_extensions>
+    <synchronization>
+      <max_eps>10</max_eps>
+    </synchronization>
+  </wodle>
+
+  <!-- Neither runs (siem.md §2.1). -->
+  <rootcheck>
+    <disabled>yes</disabled>
+  </rootcheck>
+  <sca>
+    <enabled>no</enabled>
+  </sca>

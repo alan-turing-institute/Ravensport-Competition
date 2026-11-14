@@ -1,0 +1,13 @@
+# ── RavensPort internal CA root (digital.md §2.7, §8 decision 7) ─────────────
+#
+# Every node trusts the CA root, regardless of whether it makes a
+# CA-dependent TLS connection today (deployment-config.md §4) — the same
+# posture a real internal CA's root has across a corporate fleet. Only
+# fms-01, hmi-01, hist-01, hist-dmz-01, corp-it, siem-01 and recon-01 also hold a
+# CA-signed leaf certificate of their own (installed separately, where each
+# node's build script needs it); sim-host trusts the root the same way but is built
+# by build-sim-image.sh, not this template family.
+incus exec "$BUILD_CTR" -- apt-get install -y ca-certificates
+incus file push --mode 0644 build/ca/ca.pem \
+    "$BUILD_CTR/usr/local/share/ca-certificates/ravensport-ca.crt"
+incus exec "$BUILD_CTR" -- update-ca-certificates

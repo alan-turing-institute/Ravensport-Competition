@@ -1,0 +1,62 @@
+# ── Security monitoring agent (siem.md §2.1, §3, §4.1, §4.3, §8.2, §8.5) ────
+# Collects and forwards only; performs no analysis (siem.md §2.1). The agent's
+# ossec.conf is written in full rather than patched: the packaged file carries
+# log inputs the host log-data audit excluded (siem.md §3). File
+# integrity monitoring and inventory come from _host-monitoring.xml.j2, which
+# siem-01's own monitoring shares (siem-01.sh.j2).
+#
+# The repository signing key is committed pre-dearmored
+# (build-scripts/keys/wazuh-repo.gpg) rather than fetched at build time
+# (siem.md §8.4), so no curl/gnupg step is needed to obtain or convert it.
+incus file push build-scripts/keys/wazuh-repo.gpg \
+    "$BUILD_CTR/usr/share/keyrings/wazuh.gpg"
+incus exec "$BUILD_CTR" -- bash -c '
+echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
+    > /etc/apt/sources.list.d/wazuh.list
+apt-get update -qq
+apt-get install -y wazuh-agent=4.14.7-1
+'
+incus file push build/siem/{{ node_name }}.key "$BUILD_CTR/var/ossec/etc/client.keys"
+
+# Connection-event logging (§4.1, §8.2): the rendered nftables ruleset
+# (build/nftables/{{ node_name }}.nft) directs new connections to NFLOG group
+# 1; ulogd2 turns that into one JSON object per line, which the manager's own
+# packaged `json` decoder parses with no custom decoder. Re-installing and
+# re-enabling `nftables` is a no-op on the three firewall nodes, which already
+# carry it (fw-zone.sh.j2) — their rendered ruleset already includes this same
+# table alongside their cross-zone filter table.
+incus exec "$BUILD_CTR" -- apt-get install -y nftables ulogd2 ulogd2-json net-tools
+incus file push build/nftables/{{ node_name }}.nft "$BUILD_CTR/etc/nftables.conf"
+incus file push build-scripts/ulogd.conf "$BUILD_CTR/etc/ulogd.conf"
+incus exec "$BUILD_CTR" -- mkdir -p /var/log/ulog
+
+incus exec "$BUILD_CTR" -- tee /var/ossec/etc/ossec.conf > /dev/null <<'WAZUHAGENTCONF'
+<ossec_config>
+  <client>
+    <server>
+      <address>siem-01</address>
+      <port>1514</port>
+      <protocol>tcp</protocol>
+    </server>
+    <enrollment>
+      <enabled>no</enabled>
+    </enrollment>
+  </client>
+  <localfile>
+    <log_format>journald</log_format>
+    <location>journald</location>
+  </localfile>
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/ulog/connections.json</location>
+  </localfile>
+  <localfile>
+    <log_format>full_command</log_format>
+    <command>netstat -tulpn | sed 's/\([[:alnum:]]\+\)\ \+[[:digit:]]\+\ \+[[:digit:]]\+\ \+\(.*\):\([[:digit:]]*\)\ \+\([0-9\.\:\*]\+\).\+\ \([[:digit:]]*\/[[:alnum:]\-]*\).*/\1 \2 == \3 == \4 \5/' | sort -k 4 -g | sed 's/ == \(.*\) ==/:\1/' | sed 1,2d</command>
+    <alias>netstat listening ports</alias>
+    <frequency>{{ siem_schedules.listening_port_s }}</frequency>
+  </localfile>
+{% include "_host-monitoring.xml.j2" %}
+</ossec_config>
+WAZUHAGENTCONF
+incus exec "$BUILD_CTR" -- systemctl enable wazuh-agent nftables ulogd2

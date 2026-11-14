@@ -1,0 +1,71 @@
+# RavensPort boundary-inspection rules (siem.md §5).
+#
+# Loaded on every firewall node alongside the pinned Emerging Threats Open
+# ruleset (fw-zone.sh.j2). $HOME_NET and $EXTERNAL_NET are the internal
+# zones and the external segment respectively (siem.md §8.4).
+#
+# ---------------------------------------------------------------------------
+# Tank Level System protocol conformance, TCP 10001 (sim/tls-protocol.md).
+#
+# A command is SOH + a six-character function code [+ data], with no line
+# terminator (tls-protocol.md §2). Only the three computer-format read codes
+# i101, i201, i205 are permitted (siem.md §5), and none carries a data field.
+# Checked in the to_server direction only: these are commands issued to the
+# console, not its replies.
+#
+# The console skips bytes until an SOH, reads the six characters after it,
+# answers, and repeats, so every SOH in the client's stream begins a command
+# it acts on. Each rule therefore matches an SOH anywhere in the inspected
+# data, not only at the start of a packet: a command following a permitted
+# one in the same segment is checked as if it arrived alone. Suricata applies
+# such a match to the reassembled stream, which advances as the receiving side
+# acknowledges data, so data that is never acknowledged (a connection the
+# relay resets) is checked when the flow ends. 1000003, which reads only the
+# first byte, is checked on the first segment.
+#
+#   1000001  a set command: format letter s or S (tls-protocol.md §2).
+#   1000002  any other command whose function code is not i101, i201 or i205
+#            with a two-digit device number, including the display-format
+#            I101. The six characters must be present, so data inspected up to
+#            an SOH and no further is not mistaken for a disallowed code.
+#   1000003  a client stream whose first byte is not SOH: not this protocol.
+#   1000007  bytes after a complete non-set command that do not begin the next
+#            command, which the console ignores. A set command's data field is
+#            excluded: 1000001 already reports that command.
+alert tcp any any -> $HOME_NET 10001 (msg:"RAVENSPORT TLS set command on tank gauge console"; flow:established,to_server; content:"|01|"; pcre:"/\x01[sS]/"; classtype:attempted-admin; sid:1000001; rev:2; metadata:mitre_technique_id T1692.001, mitre_technique_name Command_Message;)
+
+alert tcp any any -> $HOME_NET 10001 (msg:"RAVENSPORT TLS disallowed function code on tank gauge console"; flow:established,to_server; content:"|01|"; pcre:"/\x01(?![sS])(?!i(?:101|201|205)[0-9]{2}).{6}/s"; classtype:attempted-admin; sid:1000002; rev:2; metadata:mitre_technique_id T1692.001, mitre_technique_name Command_Message;)
+
+alert tcp any any -> $HOME_NET 10001 (msg:"RAVENSPORT non-Tank-Level-System traffic on tank gauge console port"; flow:established,to_server; dsize:>0; content:!"|01|"; depth:1; classtype:protocol-command-decode; sid:1000003; rev:1; metadata:mitre_technique_id T1571, mitre_technique_name Non-Standard_Port;)
+
+alert tcp any any -> $HOME_NET 10001 (msg:"RAVENSPORT TLS data outside a command on tank gauge console port"; flow:established,to_server; content:"|01|"; pcre:"/\x01(?![sS]).{6}[^\x01]/s"; classtype:protocol-command-decode; sid:1000007; rev:1; metadata:mitre_technique_id T1571, mitre_technique_name Non-Standard_Port;)
+
+# ---------------------------------------------------------------------------
+# Protocol conformance on the other permitted ports (siem.md §5).
+#
+# Transport Layer Security, TCP 443, 636, 8428, 9428: every TLS connection
+# opens with a handshake record, whose first two bytes are 16 03, so a client
+# whose first data does not begin with them is not speaking TLS. Only the
+# client's first data segment is checked: later segments legitimately begin
+# with other record types — a TLS 1.3 client's second flight opens with a
+# change-cipher-spec record (14 03) — or mid-record, and checking them flagged
+# every legitimate TLS connection, confirmed live. The first rule marks a flow
+# whose first data is a handshake record, silently; the second alerts on a
+# flow whose first data is not, and marks it so it alerts once. A marked flow
+# is never checked again. This checks the bytes directly rather than
+# Suricata's protocol-detection result, which an `app-layer-protocol:!tls`
+# match reads on a connection's first packets, before detection has finished.
+alert tcp any any -> $HOME_NET [443,636,8428,9428] (msg:"RAVENSPORT TLS handshake opens a Transport Layer Security port connection"; flow:established,to_server; dsize:>0; flowbits:isnotset,ravensport.tls_start_checked; content:"|16 03|"; depth:2; flowbits:set,ravensport.tls_start_checked; flowbits:noalert; classtype:protocol-command-decode; sid:1000006; rev:1;)
+alert tcp any any -> $HOME_NET [443,636,8428,9428] (msg:"RAVENSPORT non-TLS traffic on a Transport Layer Security port"; flow:established,to_server; dsize:>0; flowbits:isnotset,ravensport.tls_start_checked; content:!"|16 03|"; depth:2; flowbits:set,ravensport.tls_start_checked; classtype:protocol-command-decode; sid:1000004; rev:3; metadata:mitre_technique_id T1571, mitre_technique_name Non-Standard_Port;)
+
+# Network Time Protocol, UDP 123: Suricata's NTP parser identifies a datagram
+# from its first packet, so detection has finished when this is evaluated.
+# Replayed against captured traffic, it fired on a non-NTP datagram and on
+# none of chrony's exchanges with corp-it.
+alert udp any any -> $HOME_NET 123 (msg:"RAVENSPORT non-NTP traffic on the Network Time Protocol port"; flow:to_server; app-layer-protocol:!ntp; classtype:protocol-command-decode; sid:1000005; rev:1; metadata:mitre_technique_id T1571, mitre_technique_name Non-Standard_Port;)
+
+# Secure Shell, TCP 22: every SSH peer opens with the ASCII identification
+# string "SSH-". Mark a conforming flow silently and alert once when the first
+# client data on a permitted administration path is another protocol.
+alert tcp any any -> $HOME_NET 22 (msg:"RAVENSPORT Secure Shell identification opens a port 22 connection"; flow:established,to_server; dsize:>0; flowbits:isnotset,ravensport.ssh_start_checked; content:"SSH-"; depth:4; flowbits:set,ravensport.ssh_start_checked; flowbits:noalert; classtype:protocol-command-decode; sid:1000009; rev:1;)
+alert tcp any any -> $HOME_NET 22 (msg:"RAVENSPORT non-Secure-Shell traffic on a Secure Shell port"; flow:established,to_server; dsize:>0; flowbits:isnotset,ravensport.ssh_start_checked; content:!"SSH-"; depth:4; flowbits:set,ravensport.ssh_start_checked; classtype:protocol-command-decode; sid:1000008; rev:1; metadata:mitre_technique_id T1571, mitre_technique_name Non-Standard_Port;)

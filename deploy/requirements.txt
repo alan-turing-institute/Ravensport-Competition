@@ -1,0 +1,11 @@
+jinja2>=3.1
+pyyaml>=6.0
+pytest>=8.0
+ruff>=0.5
+pydantic>=2.0
+argon2-cffi>=23.0
+# Deterministic RSA key generation for the internal CA (digital.md §2.7, §8
+# decision 7): RSA.generate(bits, randfunc=...) accepts a caller-supplied
+# byte stream in place of OS randomness, which neither the stdlib nor
+# `cryptography` exposes.
+pycryptodome==3.20

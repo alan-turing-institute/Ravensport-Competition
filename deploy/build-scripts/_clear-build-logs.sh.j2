@@ -1,0 +1,30 @@
+# ── Clear the build container's logs (deployment.md §6.1) ─────────────────────
+#
+# The build container's boot, its package downloads and the services run while
+# configuring it are logged under the build container's name. A port host
+# enters service with no history except the record of its package
+# installation, so every log file except that record is emptied. Must be the
+# last step before the container is stopped.
+#
+# rsyslog is stopped and the journal is moved to /run first, so that the build
+# container's shutdown is not written to the image; rsyslog opens a file at its
+# first write to it, and would otherwise create the log of a service that had
+# not logged before the shutdown. Every other file is deleted and recreated
+# empty with its owner and mode, so that a service finds its log file as the
+# package installed it; a process that still holds the old file writes to the
+# deleted copy, which is not kept. The unattended-upgrades log directory is
+# removed with the package it belongs to (_no-external-services.sh.j2).
+incus exec "$BUILD_CTR" -- systemctl stop syslog.socket rsyslog.service
+incus exec "$BUILD_CTR" -- journalctl --relinquish-var
+incus exec "$BUILD_CTR" -- bash -c '
+set -euo pipefail
+find /var/log/journal -type f -delete
+rm -rf /var/log/unattended-upgrades
+find /var/log -type f \
+    ! -path "/var/log/apt/*" ! -name dpkg.log ! -name alternatives.log ! -name bootstrap.log \
+    -printf "%m %u %g %p\n" |
+while read -r mode user group path; do
+    rm -f "$path"
+    install -m "$mode" -o "$user" -g "$group" /dev/null "$path"
+done
+'
