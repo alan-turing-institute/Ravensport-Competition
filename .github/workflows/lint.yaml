@@ -1,0 +1,29 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      # The release pinned in rust-toolchain.toml. The action installs the
+      # minimal profile, so the components the pre-commit hooks run are named.
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: clippy, rustfmt
+        
+      - name: Install pre-commit
+        run: pip install pre-commit
+        
+      - name: Run pre-commit
+        run: pre-commit run --all-files

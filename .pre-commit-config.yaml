@@ -1,0 +1,39 @@
+repos:
+    - repo: https://github.com/astral-sh/ruff-pre-commit
+      rev: v0.9.10
+      hooks:
+        - id: ruff
+          args: [--fix]
+        - id: ruff-format
+    - repo: local
+      hooks:
+        - id: rustfmt
+          name: rustfmt
+          language: system
+          # There is no root workspace manifest, so run per-crate via
+          # --manifest-path (discovered under the tree, excluding target/).
+          # Skips gracefully when cargo is absent; a real formatting change or
+          # error now fails the hook instead of being swallowed by `|| echo`.
+          entry: bash -c 'command -v cargo >/dev/null 2>&1 || { echo "cargo not found, skipping rustfmt"; exit 0; }; for m in $(find . -name Cargo.toml -not -path "*/target/*"); do cargo fmt --manifest-path "$m" || exit 1; done'
+          types: [rust]
+          pass_filenames: false
+
+        - id: clippy
+          name: clippy
+          language: system
+          # Per-crate clippy. SQLX_OFFLINE uses the checked-in .sqlx cache so the
+          # fms query macros need no live database; --all-targets lints test code
+          # too (a stale test field would otherwise slip through).
+          entry: bash -c 'command -v cargo >/dev/null 2>&1 || { echo "cargo not found, skipping clippy"; exit 0; }; export SQLX_OFFLINE=true; for m in $(find . -name Cargo.toml -not -path "*/target/*"); do cargo clippy --manifest-path "$m" --all-targets -- -D warnings || exit 1; done'
+          types: [rust]
+          pass_filenames: false
+
+        - id: vocab-safe
+          name: attack-chain vocab drift
+          language: system
+          # Fails if the tagged sidecar no longer strips back to the canonical
+          # design document byte-for-byte (see specs/attack_chains/set_vocab.py).
+          # Runs only when the canonical doc, the sidecar, or the tool changes.
+          entry: python3 specs/attack_chains/set_vocab.py safe
+          files: ^specs/attack_chains/(attack-chain-design(\.main)?\.md|set_vocab\.py)$
+          pass_filenames: false

@@ -1,0 +1,7 @@
+# The Rust release used by every build, test and lint run in this repository.
+# deploy/lima.yaml and .github/workflows/lint.yaml install the same release, and
+# deploy/tests/unit/test_rust_toolchain_pin.py checks that the three agree.
+# sqlx 0.7.4, which the FMS uses, does not compile under Rust 1.100.0.
+[toolchain]
+channel = "1.98.1"
+components = ["clippy", "rustfmt"]
