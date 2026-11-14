@@ -74,8 +74,8 @@ A Track A alarm after the first release and before the second scores `0`, the be
 Clone the repository under your home directory, which Lima shares with the Incus host at the same path. Start the Incus host, which takes several minutes the first time, and open a shell in it at the repository's root.
 
 ```sh
-git clone https://github.com/alan-turing-institute/RavensPort-competition.git
-cd RavensPort-competition
+git clone https://github.com/alan-turing-institute/Ravensport-Competition.git
+cd Ravensport-Competition
 brew install lima                                  # on macOS
 limactl start --name=ravensport deploy/lima.yaml
 limactl shell ravensport
