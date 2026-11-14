@@ -1,0 +1,18 @@
+# Profile for hosts without nested virtualisation support, including hosted
+# GitHub Actions runners. Every node runs as a container.
+#
+# No build script is substituted: every node builds the same image it builds
+# under the full profile, because image building never requires nested
+# virtualisation. Each build script launches a plain container and publishes it,
+# so the profiles differ only in how the published image is instantiated.
+#
+# Key changes:
+#   - all VMs downgraded to containers
+
+profile_name: ci-minimal
+
+# Override every node's type to container.
+force_container: true
+
+# Node-level overrides
+nodes: {}

@@ -1,0 +1,15 @@
+# Full deployment - real VMs where they matter, real installers.
+# Used by `make up PROFILE=full` and the nightly self-hosted CI job.
+#
+# This file is mostly empty because topology.yaml's defaults already
+# describe the full deployment. Anything here overrides topology.yaml.
+
+profile_name: full
+
+# Pin image fingerprints in real use; tracking the alias is fine for the example.
+images:
+  ubuntu_cloud: images:ubuntu/24.04/cloud
+  debian_cloud: images:debian/12/cloud
+
+# No node overrides — topology.yaml is already "full".
+nodes: {}

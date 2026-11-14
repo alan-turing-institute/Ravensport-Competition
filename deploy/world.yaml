@@ -1,0 +1,121 @@
+# Simulation-only credentials.  The passwords in this file are fictional props
+# in a simulated environment; there is no real-world asset behind them.  They
+# are rendered into their deployed forms (argon2id hash for the FMS admin,
+# {SSHA}-encoded LDAP entries and a SHA-512 crypt workstation verifier,
+# PBKDF2 Grafana rows) at build time and never appear as
+# plaintext on a credential-storing node.  The one exception is the sim-host:
+# its actors stand in for the people who log in, so the dock operator's and the
+# reconciliation user's and systems administrator's credentials are compiled
+# into the sim binary (via sim-constants.toml) as plaintext, because the client
+# must present them.  This
+# file is a build-host authoring artefact; it is never copied into any deployed
+# instance.
+#
+# Provenance: every value traces to narrative.md or to a consuming spec.
+# A value not derivable from the narrative requires an agreed addition to
+# narrative.md before it is entered here.
+#
+# Categories (deployment-config.md §3): every value carries a trailing comment
+# opening with the categories that admit it to this file — [shared],
+# [determinism], [credential], [scenario] — enforced by
+# tests/unit/test_world_categories.py.
+
+identities:
+  admin:
+    username: fms-admin            # [shared, credential] FMS local administrator and matching corporate-directory identity
+    password: "RvnsPrt-adm1n"      # [shared, credential] rendered to FMS_ADMIN_PASSWORD_HASH, the fms-admin LDAP entry, admin-01's local systems-admin verifier, and the sim actor
+  ldap_admin:                      # [credential] the directory (corp-it) slapd rootDN
+    dn: "cn=admin,dc=ravensport,dc=local"  # [credential] suffix equals ldap.base_dn by directory convention
+    password: "LdapAdmin1!"        # [credential] rendered to corp-it's slapd rootDN password (debconf) and the LDIF-seeding bind (corp-it.sh.j2)
+  hist_admin:
+    username: hist-admin           # [credential]
+    password: "HistL0gServer-adm1n" # [credential] rendered to hist-01's seeded Grafana admin row (PBKDF2-HMAC-SHA256, hist.md §7)
+  siem_admin:
+    username: siem-admin           # [credential]
+    password: "SecM0nitor1ng-adm1n" # [credential] rendered to siem-01's seeded RBAC admin row (scrypt, siem.md §8.5, deployment-config.md §6)
+  reconciliation_user:
+    username: recon-user           # [shared, credential] the same username for Grafana and the workstation; rendered to recon_username in infra/sim/sim-constants.toml
+    password: "HistRepl1ca-rec0n"  # [shared, credential] rendered to hist-dmz-01's seeded Grafana user row (PBKDF2-HMAC-SHA256, hist.md §7) and recon_password in infra/sim/sim-constants.toml
+    # Distinct from the Grafana password above
+    workstation_password: "ITWorkstat1on-rec0n" # [shared, credential] rendered to corp-it's directory as the {SSHA} userPassword of uid=recon-user (recon-01 authenticates against it) and recon_workstation_password in infra/sim/sim-constants.toml
+  systems_administrator:
+    username: systems-admin       # [shared, credential] local account on admin-01 and SSH account on the bastion/managed hosts; rendered to systems_administrator_username in infra/sim/sim-constants.toml
+  operators:
+    - username: jrenard            # [shared, credential] rendered to OPERATOR_USERNAME in infra/sim/sim-constants.toml (sim binary)
+      password: "D0ck-0p-rvp"      # [shared, credential] rendered to {SSHA} userPassword in LDIF and OPERATOR_PASSWORD in infra/sim/sim-constants.toml (sim binary)
+      rfid_card: 1000002           # [shared] rendered to operator_cards in infra/sim/sim-constants.toml and FMS_SEED_CARDS in fms.env
+
+roster:
+  refuel_volume_min_l: 500         # [scenario] narrative §2.2; lower bound of each tug's requested volume (sim.md §6); rendered to refuel_volume_min_l in infra/sim/sim-constants.toml
+  refuel_volume_max_l: 3000        # [scenario] narrative §2.2; upper bound of each tug's requested volume, at most 6553.5, the largest preset the dispenser holds (fms.md §7.4); rendered to refuel_volume_max_l in infra/sim/sim-constants.toml
+  # One entry per tug, rendered in roster order to the numbered vessel_<n>_ keys
+  # of [vessels] in infra/sim/sim-constants.toml (deployment-config.md §4.1).
+  vessels:
+    - imo_number: 1999997          # [shared, scenario] vessel identifier; rendered to vessel_<n>_imo_number in infra/sim/sim-constants.toml and as the card label in FMS_SEED_CARDS in fms.env
+      name: "Tug Alpha"            # [scenario] rendered to vessel_<n>_name in infra/sim/sim-constants.toml (written on the BDN)
+      rfid_card: 1000001           # [shared, scenario] rendered to vessel_<n>_rfid_card in infra/sim/sim-constants.toml and FMS_SEED_CARDS in fms.env
+      mean_time_away_s: 72000      # [scenario] sim.md §6; the tug's mean time between leaving the dock and its next arrival, 20 h; rendered, scaled, to vessel_<n>_mean_time_away_s in infra/sim/sim-constants.toml
+    - imo_number: 1999985          # [shared, scenario] vessel identifier, projected as the first tug's
+      name: "Tug Bravo"            # [scenario] projected as the first tug's
+      rfid_card: 1000003           # [shared, scenario] projected as the first tug's
+      mean_time_away_s: 72000      # [scenario] projected as the first tug's
+    - imo_number: 1999973          # [shared, scenario] vessel identifier, projected as the first tug's
+      name: "Tug Charlie"          # [scenario] projected as the first tug's
+      rfid_card: 1000004           # [shared, scenario] projected as the first tug's
+      mean_time_away_s: 72000      # [scenario] projected as the first tug's
+
+ldap:
+  base_dn: "dc=ravensport,dc=local" # [shared]
+  people_ou: "ou=people"           # [shared]
+
+database:
+  fms:
+    name: fms                      # [shared]
+    role: fms                      # [shared]
+
+process:
+  tank_capacity_l: 50000           # [shared, scenario] narrative §1; ATG ullage, FMS cavitation guard, sim overfill threshold
+  cavitation_threshold_pct: 10     # [scenario] narrative §5; the FMS refuses a dispense at or below this level (fms.md §5.1); rendered to FMS_CAVITATION_THRESHOLD_PCT in fms.env
+  overfill_interlock_pct: 95       # [scenario] narrative §2.1, §5; level at which the hardwired overfill interlock opens (sim.md §1.3); rendered to overfill_interlock_pct in infra/sim/sim-constants.toml
+  dispenser_flow_rate_l_per_min: 300 # [scenario] sim.md §1.1; the dispenser's flow rate; rendered, scaled, to outflow_rate_l_per_min in infra/sim/sim-constants.toml
+  k_factor: 100                   # [shared] pulses/litre; rendered to k_factor in infra/sim/sim-constants.toml and FMS_K_FACTOR in fms.env
+  grade: MGO                       # [shared, scenario] narrative §1; only valid fuel grade at this facility; rendered to grade in infra/sim/sim-constants.toml and FMS_GRADE in fms.env
+  density_kg_per_l: 0.840          # [shared, scenario] reference density of `grade` at 15 °C; rendered to density_kg_per_l in infra/sim/sim-constants.toml and FMS_DENSITY_KG_PER_L in fms.env
+  sulphur_pct_mm: 0.10             # [scenario] sulphur content of `grade`, % mass/mass, within the regulation 14.1 limit; rendered to sulphur_pct_mm in infra/sim/sim-constants.toml (bunker delivery note)
+  flashpoint_c: 66.0               # [scenario] flashpoint of `grade`; a chosen value, not a measurement (ISO 8217 minimum 60 °C); rendered to flashpoint_c in infra/sim/sim-constants.toml (bunker delivery note)
+
+fuel_supplier:
+  reorder_threshold_l: 20000       # [scenario] narrative §2.1; sim.md §5.3; reported volume at or below which the supplier orders; rendered to reorder_threshold_l in infra/sim/sim-constants.toml
+  delivery_volume_l: 18000         # [scenario] narrative §2.1; volume each road tanker carries; rendered to delivery_volume_l in infra/sim/sim-constants.toml
+  lead_time_s: 21600               # [scenario] narrative §2.1 "a short time after"; sim.md §5.3; time from the order to the tanker's arrival; rendered, scaled, to lead_time_s in infra/sim/sim-constants.toml
+  tanker_pump_rate_l_per_min: 600  # [scenario] sim.md §1.1; the road tanker's pump rate, which is the tank's inflow rate; rendered, scaled, to inflow_rate_l_per_min in infra/sim/sim-constants.toml
+  poll_interval_s: 900             # [scenario] digital.md §4.4; sim.md §5.3; time between the supplier's polls of the ATG; rendered, scaled, to supplier_poll_interval_s in infra/sim/sim-constants.toml
+
+intervals:
+  atg_poll_s: 30                   # [scenario] digital.md §4.5; FMS ATG poll period
+  modbus_poll_s: 5                 # [scenario] FMS dispenser totaliser poll period
+  session_timeout_s: 1800          # [shared, scenario] digital.md §5.4; FMS session lifetime from login (fms.md §4), not extended by use; rendered to FMS_SESSION_TIMEOUT in fms.env and session_timeout_s in infra/sim/sim-constants.toml (the reconciliation user's look-back for a session's LOGIN)
+  challenge_timeout_s: 30          # [scenario] hmi.md; window for RFID presentation after login initiation
+  admin_check_interval_h: 24       # [scenario] narrative.md §3; the systems administrator's routine-check cadence; rendered, scaled, to admin_check_interval_s in infra/sim/sim-constants.toml
+  dock_operator_poll_s: 30         # [scenario] sim-impl.md, dock operator; how often the dock operator checks a job's status on the HMI; rendered, scaled, to dock_operator_poll_s in infra/sim/sim-constants.toml
+  file_integrity_interval_h: 12    # [scenario] siem.md §2.1; how often each host's agent checks its files for changes; rendered, scaled, into each agent's configuration
+  inventory_interval_h: 1          # [scenario] siem.md §2.1; how often each host's agent reports its packages, ports, processes and interfaces; rendered, scaled, into each agent's configuration
+  listening_port_interval_s: 360   # [scenario] siem.md §2.1; how often each host's agent reports the ports it listens on; rendered, scaled, into each agent's configuration
+
+audit:
+  period: month                    # [scenario] narrative.md §3; the reconciliation audit's period, set by the port: month, week or day; rendered to audit_period in infra/sim/sim-constants.toml
+  settling_delay_s: 21600          # [scenario] narrative.md §3; how far into the following period each audit runs, once the period's records have reached the log server; shorter than the shortest period of its kind; rendered to settling_delay_s in infra/sim/sim-constants.toml
+  boundary_margin_s: 7200          # [scenario] sim-impl.md, reconciliation user; how far beyond each end of the period the audit also retrieves transaction records; the settling delay's lower bound; rendered, scaled, to boundary_margin_s in infra/sim/sim-constants.toml
+
+crypto:
+  # 16-byte hex string.  Per-identity salt is derived as the first 16 bytes of
+  # HMAC-SHA256(password_salt_seed, username).  Not projected to any deployed node.
+  password_salt_seed: "0f1e2d3c4b5a69788796a5b4c3d2e1f0" # [determinism]
+  # notBefore for every certificate the internal CA signs (digital.md §2.7, §8
+  # decision 7).  Required, not optional: full byte-for-byte reproducibility of
+  # the CA (deployment.md §9.1) depends on a pinned date rather than "now", and
+  # this is where that pin lives, not a source constant.  Leaf certificates are
+  # valid for 1 year from this date — render.py refuses to build if that
+  # window has already elapsed, so this must be bumped forward (and the CA
+  # rebuilt) at least once a year.
+  ca_not_before: "2026-09-01"      # [determinism]

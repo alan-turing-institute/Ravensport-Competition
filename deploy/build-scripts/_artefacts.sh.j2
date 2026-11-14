@@ -1,0 +1,223 @@
+# ── Pinned upstream artefacts (hist.md §2.1, siem.md §8.4) ────────────────────
+#
+# Included by the build scripts that install upstream releases rather than
+# distribution packages. Versions are pinned: a `latest` lookup makes the image
+# non-reproducible, and against GitHub it is subject to the unauthenticated API
+# rate limit, which fails the build for a reason unrelated to anything that
+# changed.
+VICTORIA_METRICS_VERSION="1.148.0"
+VICTORIA_LOGS_VERSION="1.52.0"
+GRAFANA_VERSION="12.4.6"
+VL_DATASOURCE_VERSION="0.30.1"
+# The only artefact whose digest is pinned rather than fetched. Its publisher
+# offers a SHA-1 checksum file, which cannot establish that a download is the
+# published release; hist.md §2.1 records the SHA-256 and this is that value.
+# It must be updated whenever VL_DATASOURCE_VERSION changes.
+VL_DATASOURCE_SHA256="328e4fd2057de057e3646fdcfcefd43e62005b99b9677489fa64c77c26395946"
+# The browser on recon-01 (recon.md §6.2). Extended Support Release
+FIREFOX_VERSION="153.1.0esr"
+# Mozilla publishes one build per locale. Pick British English language
+# and is part of the download path rather than a runtime setting
+FIREFOX_LOCALE="en-GB"
+# The Emerging Threats Open ruleset, matched to the installed Suricata's own
+# release line (siem.md §5, §8.4). It is held in this repository rather than
+# downloaded: Emerging Threats republishes the ruleset daily at a single URL
+# per Suricata release line and keeps no earlier revisions, so no download
+# can be pinned to a fixed revision. The digest is recorded in siem.md §8.4
+# and checked here, so a corrupted or altered copy fails the build. All three
+# values must be updated together whenever the held revision is replaced.
+ET_OPEN_SURICATA_VERSION="7.0.3"
+ET_OPEN_REVISION="11302"
+ET_OPEN_SHA256="b5d970de888803e58b91a22b642965c190970d2d698eaab6575095cbcf96c3b3"
+# The ATT&CK for Industrial Control Systems matrix (siem.md §2.2, §8.4),
+# pinned to a released tag of the STIX bundle repository rather than its
+# default branch, which is a moving target. 19.2 was the current release when
+# the matrix was first imported. It revokes T0855 (Unauthorized Command
+# Message) in favour of T1692.001 (Command Message), the technique the Tank
+# Level System boundary rules carry (siem.md §5); an earlier release would
+# keep T0855 only by pinning a superseded matrix.
+ICS_STIX_VERSION="v19.2"
+ICS_STIX_SHA256="08b83d2cea6b6d6752468ef0e62e2ab2a53c9443ef72c439ecccb07ab9e89da9"
+
+# Shared between hosts: four of the six artefacts are common to hist-01 and
+# hist-dmz-01, so a per-host cache would download each of them twice. The six
+# come from the four version lines above — vmutils carries vmagent at the
+# VictoriaMetrics version and vlutils carries vlagent at the VictoriaLogs one —
+# and those two are exactly the pair the replica does not fetch, since it runs
+# no ingestion agent (hist.md §2).
+ARTEFACT_CACHE=".artefact-cache"
+
+# The installed filesystem layout is identical on both architectures, so this
+# affects only which file is downloaded.
+#
+# Mozilla names the same two architectures differently — `x86_64`/`aarch64`
+# against the `amd64`/`arm64` every other publisher here uses — so the Firefox
+# case below reads MOZILLA_ARCH rather than ARTEFACT_ARCH.
+case "$(uname -m)" in
+    x86_64)        ARTEFACT_ARCH="amd64"; MOZILLA_ARCH="x86_64"  ;;
+    aarch64|arm64) ARTEFACT_ARCH="arm64"; MOZILLA_ARCH="aarch64" ;;
+    *)
+        echo "ERROR: unsupported build-host architecture $(uname -m)" >&2
+        echo "       hist.md §2.1 pins artefacts for amd64 and arm64 only." >&2
+        exit 1
+        ;;
+esac
+
+# Resolve one pinned artefact to a verified path in the cache, downloading it
+# first if the cache does not already hold it, and echo that path so the caller
+# can push it into the build container.
+#
+# The published digest is fetched once, alongside the artefact, and kept beside
+# it. A later build then verifies the cached copy without a network round trip,
+# so a rebuild works offline. This detects a truncated, corrupted, or locally
+# altered cache entry. It does not detect a compromised upstream release: that
+# would require the digest to be pinned in this file rather than fetched, which
+# hist.md §2.1 does not currently specify.
+fetch_artefact() {
+    local artefact="$1"
+    local file url digest_url digest_format pinned_digest="" digest_key=""
+    local repo_path=""
+
+    case "$artefact" in
+        victoria-metrics|vmutils)
+            file="${artefact}-linux-${ARTEFACT_ARCH}-v${VICTORIA_METRICS_VERSION}.tar.gz"
+            url="https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v${VICTORIA_METRICS_VERSION}/${file}"
+            digest_url="${url%.tar.gz}_checksums.txt"
+            digest_format="sha256sum"
+            ;;
+        victoria-logs|vlutils)
+            file="${artefact}-linux-${ARTEFACT_ARCH}-v${VICTORIA_LOGS_VERSION}.tar.gz"
+            url="https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/v${VICTORIA_LOGS_VERSION}/${file}"
+            digest_url="${url%.tar.gz}_checksums.txt"
+            digest_format="sha256sum"
+            ;;
+        grafana)
+            # Only the unsuffixed open-source build is Apache 2.0 / AGPLv3; the
+            # enterprise and cluster variants at the same version are separately
+            # licensed (hist.md §2.1).
+            file="grafana_${GRAFANA_VERSION}_${ARTEFACT_ARCH}.deb"
+            url="https://dl.grafana.com/oss/release/${file}"
+            digest_url="${url}.sha256"
+            digest_format="digest"
+            ;;
+        victoriametrics-logs-datasource)
+            # Grafana cannot query VictoriaLogs without this plugin (hist.md §7).
+            # One archive carries the backend binaries for every platform, so the
+            # name has no architecture in it, and the repository it is published
+            # from is named for the product rather than for the plugin.
+            file="${artefact}-v${VL_DATASOURCE_VERSION}.tar.gz"
+            url="https://github.com/VictoriaMetrics/victorialogs-datasource/releases/download/v${VL_DATASOURCE_VERSION}/${file}"
+            digest_url=""
+            digest_format="pinned"
+            pinned_digest="$VL_DATASOURCE_SHA256"
+            ;;
+        et-open)
+            # One ruleset, not per-architecture: it is plain text, not a
+            # compiled artefact. Held in this repository, so it bypasses the
+            # cache and the download below and is only verified.
+            file="emerging.rules-suricata-${ET_OPEN_SURICATA_VERSION}-r${ET_OPEN_REVISION}.tar.gz"
+            repo_path="build-scripts/rulesets/${file}"
+            pinned_digest="$ET_OPEN_SHA256"
+            ;;
+        ics-attack-stix)
+            file="ics-attack-${ICS_STIX_VERSION}.json"
+            url="https://raw.githubusercontent.com/mitre-attack/attack-stix-data/${ICS_STIX_VERSION}/ics-attack/ics-attack.json"
+            digest_url=""
+            digest_format="pinned"
+            pinned_digest="$ICS_STIX_SHA256"
+            ;;
+        firefox)
+            # Two departures from every artefact above.
+            # The architecture is Mozilla's name for it, not ARTEFACT_ARCH
+            # The unmapped value yields a path that doesn't exist
+            # And the release's single SHA256SUMS covers every locale
+            # and architecture, keyed by a relative path rather than by a bare
+            # filename, so the `$2 == f` match the other sha256sum artefacts use
+            # selects no row at all and presents as a missing digest.
+            file="firefox-${FIREFOX_VERSION}.tar.xz"
+            local subpath="linux-${MOZILLA_ARCH}/${FIREFOX_LOCALE}/${file}"
+            url="https://archive.mozilla.org/pub/firefox/releases/${FIREFOX_VERSION}/${subpath}"
+            digest_url="https://archive.mozilla.org/pub/firefox/releases/${FIREFOX_VERSION}/SHA256SUMS"
+            digest_format="sha256sum_path"
+            digest_key="$subpath"
+            # The bare filename is identical across architectures and locales,
+            # so a cache shared between build hosts of different architectures
+            # would collide. Qualify the cached copy by what actually varies.
+            file="firefox-${FIREFOX_VERSION}-linux-${MOZILLA_ARCH}-${FIREFOX_LOCALE}.tar.xz"
+            ;;
+        *)
+            echo "ERROR: unknown artefact '${artefact}'" >&2
+            return 1
+            ;;
+    esac
+
+    local expected actual
+    if [ -n "$repo_path" ]; then
+        if [ ! -f "$repo_path" ]; then
+            echo "ERROR: ${repo_path} is missing from the repository." >&2
+            return 1
+        fi
+        actual=$(sha256sum "$repo_path" | cut -d' ' -f1)
+        if [ "$pinned_digest" != "$actual" ]; then
+            echo "ERROR: ${repo_path} failed verification." >&2
+            echo "       expected ${pinned_digest}" >&2
+            echo "       actual   ${actual}" >&2
+            return 1
+        fi
+        echo "$repo_path"
+        return 0
+    fi
+
+    local cache_path="${ARTEFACT_CACHE}/${file}"
+    local digest_path="${cache_path}.sha256"
+    mkdir -p "$ARTEFACT_CACHE"
+
+    if [ ! -f "$cache_path" ] || [ ! -f "$digest_path" ]; then
+        echo "  fetching ${file}" >&2
+        curl -fsSL --retry 3 -o "${cache_path}.part" "$url"
+        case "$digest_format" in
+            # VictoriaMetrics and VictoriaLogs publish one checksums file per
+            # release asset, listing the tarball and each binary inside it.
+            sha256sum)
+                curl -fsSL "$digest_url" \
+                    | awk -v f="$file" '$2 == f { print $1 }' > "${digest_path}.part"
+                ;;
+            # One checksums file per release covering every locale and
+            # architecture, keyed by a path relative to the release directory.
+            sha256sum_path)
+                curl -fsSL "$digest_url" \
+                    | awk -v f="$digest_key" '$2 == f { print $1 }' > "${digest_path}.part"
+                ;;
+            # Grafana publishes a bare digest with no filename beside it.
+            digest)
+                curl -fsSL "$digest_url" | tr -d '[:space:]' > "${digest_path}.part"
+                ;;
+            # Taken from the specification rather than from the publisher, so a
+            # substituted upstream release is caught for this artefact where it
+            # is not for the others (hist.md §2.2).
+            pinned)
+                printf '%s' "$pinned_digest" > "${digest_path}.part"
+                ;;
+        esac
+        if [ ! -s "${digest_path}.part" ]; then
+            rm -f "${cache_path}.part" "${digest_path}.part"
+            echo "ERROR: no digest for ${file} at ${digest_url:-hist.md §2.1}" >&2
+            return 1
+        fi
+        mv "${cache_path}.part" "$cache_path"
+        mv "${digest_path}.part" "$digest_path"
+    fi
+
+    expected=$(cat "$digest_path")
+    actual=$(sha256sum "$cache_path" | cut -d' ' -f1)
+    if [ "$expected" != "$actual" ]; then
+        rm -f "$cache_path" "$digest_path"
+        echo "ERROR: ${file} failed verification." >&2
+        echo "       expected ${expected}" >&2
+        echo "       actual   ${actual}" >&2
+        echo "       The cached copy has been removed; re-run to fetch it again." >&2
+        return 1
+    fi
+
+    echo "$cache_path"
+}

@@ -1,0 +1,39 @@
+#!/usr/sbin/nft -f
+# Packet filter for the sim-host container (sim-network.md §1). Loaded by the
+# sim-net service at start-up. Two chains: a host-local inbound filter for the
+# pure-egress interfaces, and a forward filter that drops all transit traffic.
+#
+# ot-operator, ext-supplier, it-recon-user, and it-sysadmin originate
+# connections only; the sim binds nothing inbound on them, so any inbound attempt is
+# dropped (established/related return traffic is allowed). The four appliance
+# interfaces (ot-atg, ot-disp, ot-vessel-rfid, ot-op-rfid) serve HAProxy
+# frontends and accept inbound via the default-accept policy. Wrong-port
+# attempts on an appliance interface simply find nothing listening.
+#
+# sim-host is multi-homed across vnet-ext, vnet-ot, and vnet-it but is never a
+# router between them. The forward chain defaults to drop so it cannot bridge
+# those zones for any other host, complementing the ip_forward=0 sysctl set by
+# the sim-net service.
+
+# Reset the table on every load so the sim-net service can re-run idempotently
+# (the bare declaration creates it if absent; delete then clears it cleanly).
+table inet egress-guard
+delete table inet egress-guard
+
+table inet egress-guard {
+    chain input {
+        type filter hook input priority 0; policy accept;
+
+        iifname { "ot-operator", "ext-supplier", "it-recon-user", "it-sysadmin" } \
+            ct state established,related accept
+        iifname { "ot-operator", "ext-supplier", "it-recon-user", "it-sysadmin" } drop
+    }
+
+    # sim-host originates and terminates its own traffic only (input/output);
+    # nothing it does is transit. Dropping the forward chain outright means the
+    # kernel cannot route between vnet-ext, vnet-ot, and vnet-it even if
+    # forwarding were re-enabled, so the three zones cannot be bridged here.
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+    }
+}

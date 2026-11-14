@@ -1,0 +1,304 @@
+# Single source of truth for the Ravensport deployment
+# Edits made to this are deployed downstream
+#
+# `make up` deploys the ci-minimal profile; `make up PROFILE=full` the full one.
+
+version: 1
+
+# Networks become Incus managed bridges.
+# `nat: false` — isolated bridge: the host has no IP on the subnet, so it
+#                 cannot route between zones.  Traffic crossing zone boundaries
+#                 must transit a fw node.
+networks:
+  vnet-ext:
+    cidr: 10.10.0.0/24
+    nat: false
+  vnet-dmz:
+    cidr: 10.20.0.0/24
+    nat: false
+  vnet-it:
+    cidr: 10.30.0.0/24
+    nat: false
+  vnet-ot:
+    cidr: 10.40.0.0/24
+    nat: false
+
+# The site time source. Every managed node is a chrony client of it; the
+# firewall_rules below carry the queries (digital.md §1.3).
+time_source: corp-it
+
+# Firewall policy enforced by fw nodes (nftables).
+# Anything not listed is denied. `established,related` is always allowed.
+# `src` is optional: without it a rule admits any host on the `from` network;
+# with it, only that node (its address on `from`) or IPv4 address.
+firewall_rules:
+  - { from: vnet-ext, to: vnet-dmz, dst: atg-relay-01, port: 10001, proto: tcp }
+  # ATG relay forwarding: only atg-relay-01 reaches the console (digital.md §1.2).
+  - { from: vnet-dmz, to: vnet-ot,  src: atg-relay-01, dst: 10.40.0.51, port: 10001, proto: tcp }
+  - { from: vnet-it,  to: vnet-dmz, dst: hist-dmz-01,  port: 443,   proto: tcp }
+  # Systems administration: the workstation reaches only the dedicated
+  # bastion; the bastion reaches only the three port-managed OT hosts.
+  - { from: vnet-it,  to: vnet-dmz, src: admin-01,       dst: dmz-bastion-01, port: 22, proto: tcp }
+  - { from: vnet-dmz, to: vnet-ot,  src: dmz-bastion-01, dst: fms-01,         port: 22, proto: tcp }
+  - { from: vnet-dmz, to: vnet-ot,  src: dmz-bastion-01, dst: hist-01,        port: 22, proto: tcp }
+  - { from: vnet-dmz, to: vnet-ot,  src: dmz-bastion-01, dst: hmi-01,         port: 22, proto: tcp }
+  # Log-server replication: hist-01's vmagent and vlagent push to the DMZ
+  # replica's two stores (hist.md §6). Metrics to VictoriaMetrics on 8428,
+  # events to VictoriaLogs on 9428.
+  - { from: vnet-ot,  to: vnet-dmz, dst: hist-dmz-01,  port: 8428,  proto: tcp }
+  - { from: vnet-ot,  to: vnet-dmz, dst: hist-dmz-01,  port: 9428,  proto: tcp }
+  # NTP: all ot/dmz hosts sync to corp-it 
+  - { from: vnet-ot,  to: vnet-dmz, dst: corp-it,       port: 123,   proto: udp  }
+  - { from: vnet-dmz, to: vnet-it,  dst: corp-it,       port: 123,   proto: udp  }
+  # LDAPS: vnet-ot auth clients → corp-it (two-hop transit OT → DMZ → IT)
+  - { from: vnet-ot,  to: vnet-dmz, dst: corp-it,      port: 636,   proto: tcp  }
+  - { from: vnet-dmz, to: vnet-it,  dst: corp-it,      port: 636,   proto: tcp  }
+  # Security monitoring agent traffic (siem.md §8.1): OT/DMZ agents → siem-01
+  # (two-hop transit OT → DMZ → IT); DMZ agents also use the second hop.
+  - { from: vnet-ot,  to: vnet-dmz, dst: siem-01,      port: 1514,  proto: tcp  }
+  - { from: vnet-dmz, to: vnet-it,  dst: siem-01,      port: 1514,  proto: tcp  }
+
+# Default image used when a node doesn't specify one.
+defaults:
+  image: images:ubuntu/24.04/cloud
+  type: container
+
+nodes:
+  # ── Firewalls ──────────────────────────────────────────────────────────
+  # Each fw node sits between two zone bridges.  Zone nodes use
+  # the fw node's zone NIC IP as their default gateway.
+  fw-ext-dmz:
+    type: vm
+    cpu: 2
+    memory: 2GB
+    nics:
+      - { network: vnet-ext, ipv4: 10.10.0.2,  name: ext0 }
+      - network: vnet-dmz
+        ipv4: 10.20.0.2
+        name: dmz0
+        # This node's own agent traffic to siem-01 (siem.md §8.1): the
+        # firewall_rules entries above permit the path but create no route
+        # for it — the same two-hop gotcha atg-relay-01 needs a route for.
+        routes:
+          - { to: 10.30.0.0/24, via: 10.20.0.3 }  # vnet-it via fw-dmz-it
+    resolve: [siem-01]
+    build_script: fw-zone
+
+  fw-dmz-it:
+    type: vm
+    cpu: 2
+    memory: 2GB
+    nics:
+      - network: vnet-dmz
+        ipv4: 10.20.0.3
+        name: dmz0
+        routes:
+          - { to: 10.40.0.0/24, via: 10.20.0.4 }  # vnet-ot via fw-ot-dmz
+      - { network: vnet-it,  ipv4: 10.30.0.2,  name: it0  }
+    resolve: [siem-01]
+    build_script: fw-zone
+
+  fw-ot-dmz:
+    type: vm
+    cpu: 2
+    memory: 2GB
+    nics:
+      - { network: vnet-ot,  ipv4: 10.40.0.2,  name: ot0  }
+      - network: vnet-dmz
+        ipv4: 10.20.0.4
+        name: dmz0
+        routes:
+          - { to: 10.30.0.0/24, via: 10.20.0.3 }  # vnet-it via fw-dmz-it
+    resolve: [siem-01]
+    build_script: fw-zone
+
+  # ── External zone ──────────────────────────────────────────────────────
+  # Attack-launch host, not part of the modelled asset: a plain host on the
+  # External zone from which attacks against RavensPort are run (a separate
+  # phase of the project; specs/host_specs/adversary/adversary.md). No service,
+  # no resolvable hostnames, no time client. Its sole NIC is on vnet-ext, so
+  # every packet it sends to another zone must transit fw-ext-dmz.
+  adversary:
+    # The adversary boots with its NICs present but unconfigured: no address, no
+    # gateway, no routes — so at rest it holds no knowledge of the wider network,
+    # only latent link-layer presence on the two segments its NICs are wired to
+    # (adversary.md §1). `activate: runtime` tells the renderer to emit each NIC
+    # down and addressless. An attack stage that requires a `Segment` fact brings
+    # that zone's NIC up and binds `ipv4` for the duration of the stage, then
+    # tears it down; the gateway and any off-segment route are discovered at
+    # attack time, never pre-baked. `ipv4` is retained as the address a stage
+    # binds and as the node's identity in the host and entity maps, but nothing
+    # is written into the boot-time routing table.
+    nics:
+      - { network: vnet-ext, ipv4: 10.10.0.20, activate: runtime }
+      # Second interface, on the IT zone: latent link-layer presence on vnet-it
+      # (adjacency to corp-it and recon-01). No route to vnet-dmz is pre-baked;
+      # an IT-foothold stage that needs to reach hist-dmz-01 discovers the gateway
+      # (fw-dmz-it) and installs the route transiently for its own duration.
+      - { network: vnet-it, ipv4: 10.30.0.50, name: it0, activate: runtime }
+    # Attack-launch host, entirely outside RavensPort save for the two NICs
+    # above. Its own build script installs the reconnaissance, capture, and
+    # directory utilities the attack phase depends on and no fleet material —
+    # no internal CA root, no time client, no service (adversary.md §2).
+    build_script: adversary
+
+  # ── DMZ ────────────────────────────────────────────────────────────────
+  atg-relay-01:
+    nics:
+      - network: vnet-dmz
+        ipv4: 10.20.0.10
+        gateway: 10.20.0.2
+        routes:
+          - { to: 10.40.0.0/24, via: 10.20.0.4 }  # vnet-ot via fw-ot-dmz
+          # This node's own agent traffic to siem-01 (siem.md §8.1): the
+          # firewall_rules entries permit the path but create no route for it.
+          - { to: 10.30.0.0/24, via: 10.20.0.3 }  # vnet-it via fw-dmz-it
+    # HAProxy backend references atg-console by name; siem-01 is the other
+    # hostname this node resolves. All other nodes use IP addresses from
+    # their env files.
+    resolve: [atg-console, siem-01]
+    build_script: atg-relay-01
+
+  hist-dmz-01:
+    type: vm
+    cpu: 2
+    memory: 4GB
+    nics:
+      - network: vnet-dmz
+        ipv4: 10.20.0.20
+        gateway: 10.20.0.2
+        routes:
+          - { to: 10.30.0.0/24, via: 10.20.0.3 }  # vnet-it via fw-dmz-it
+          - { to: 10.40.0.0/24, via: 10.20.0.4 }  # vnet-ot via fw-ot-dmz
+    resolve: [siem-01]
+    build_script: hist-dmz-01
+
+  dmz-bastion-01:
+    nics:
+      - network: vnet-dmz
+        ipv4: 10.20.0.30
+        gateway: 10.20.0.3
+        routes:
+          - { to: 10.30.0.0/24, via: 10.20.0.3 }  # vnet-it via fw-dmz-it
+          - { to: 10.40.0.0/24, via: 10.20.0.4 }  # vnet-ot via fw-ot-dmz
+    resolve: [fms-01, hist-01, hmi-01, siem-01]
+    build_script: dmz-bastion-01
+    ssh_role: bastion
+
+  # ── IT zone ────────────────────────────────────────────────────────────
+  # siem-01 sits here alongside corp-it and recon-01 (siem.md §8.1).
+  siem-01:
+    nics:
+      - network: vnet-it
+        ipv4: 10.30.0.30
+        gateway: 10.30.0.2
+        routes:
+          - { to: 10.20.0.0/24, via: 10.30.0.2 }  # vnet-dmz via fw-dmz-it
+          - { to: 10.40.0.0/24, via: 10.30.0.2 }  # vnet-ot via fw-dmz-it -> fw-ot-dmz
+    cpu: 2
+    memory: 2GB
+    build_script: siem-01
+
+  corp-it:
+    nics:
+      - network: vnet-it
+        ipv4: 10.30.0.20
+        gateway: 10.30.0.2
+        routes:
+          - { to: 10.40.0.0/24, via: 10.30.0.2 }  # vnet-ot via fw-dmz-it
+    resolve: [fms-01, siem-01]
+    build_script: corp-it
+
+  recon-01:
+    nics:
+      - network: vnet-it
+        ipv4: 10.30.0.10
+        gateway: 10.30.0.2
+        routes:
+          - { to: 10.20.0.0/24, via: 10.30.0.2 }  # vnet-dmz via fw-dmz-it
+    # A graphical session and a browser need more than the container default.
+    cpu: 2
+    memory: 2GB
+    resolve: [hist-dmz-01, corp-it, siem-01]
+    build_script: recon-01
+
+  admin-01:
+    nics:
+      - network: vnet-it
+        ipv4: 10.30.0.40
+        gateway: 10.30.0.2
+        routes:
+          - { to: 10.20.0.0/24, via: 10.30.0.2 }  # vnet-dmz via fw-dmz-it
+    resolve: [corp-it, dmz-bastion-01, fms-01, hist-01, hmi-01, siem-01]
+    build_script: admin-01
+    ssh_role: workstation
+
+  # ── OT zone — services ─────────────────────────────────────────────────
+  fms-01:
+    type: vm
+    cpu: 2
+    memory: 2GB
+    nics: [{ network: vnet-ot, ipv4: 10.40.0.10, gateway: 10.40.0.2 }]
+    # The vessel RFID reader is a networked TCP service (sim-network.md): the
+    # FMS connects to its OT address (vessel-rfid:9001) directly — no serial link.
+    # hist-01's leaf certificate carries a DNS SAN of "hist-01" only (digital.md
+    # §2.7), so the FMS's pushes into vmagent/vlagent must resolve it by name
+    # (hist.md §3.1, §5).
+    resolve: [corp-it, hist-01, siem-01]
+    build_script: fms-01
+    ssh_role: managed
+
+  hmi-01:
+    type: vm
+    cpu: 2
+    memory: 4GB
+    nics: [{ network: vnet-ot, ipv4: 10.40.0.12, gateway: 10.40.0.2 }]
+    # The operator RFID reader is a networked TCP service (sim-network.md): the
+    # HMI connects to its OT address (operator-rfid:9002) directly — no serial link.
+    # fms-01's leaf certificate carries a DNS SAN of "fms-01" only (digital.md
+    # §8 decision 7), so the HMI binary's HTTPS client must resolve it by name.
+    # hist-01's Grafana is reachable from any OT host, including this one
+    # (hist-tests.md §7), and its certificate is likewise hostname-only.
+    resolve: [fms-01, hist-01, siem-01]
+    build_script: hmi-01
+    ssh_role: managed
+
+  hist-01:
+    type: vm
+    cpu: 2
+    memory: 4GB
+    nics: [{ network: vnet-ot, ipv4: 10.40.0.11, gateway: 10.40.0.2 }]
+    # hist-dmz-01's leaf certificate carries a DNS SAN of "hist-dmz-01" only
+    # (digital.md §2.7), and the replication targets in hist.md §6 address it
+    # by that name, so this node must resolve it too.
+    resolve: [hist-dmz-01, siem-01]
+    build_script: hist-01
+    ssh_role: managed
+
+  # ── OT zone — simulated physical world ───────────────────────────────
+  # The sim runs as a single container. The Rust `sim` binary binds servers
+  # and originates clients on 127.0.0.1 only; an in-container HAProxy owns
+  # every network interface, presenting each sim entity as a distinct device
+  # on its zone (sim-network.md). Each address is its own NIC. The five
+  # vnet-ot NICs share the 10.40.0.0/24 subnet on one host, so they use
+  # macvlan: a distinct MAC per NIC with per-MAC receive filtering gives
+  # native L2 separation, each answering address resolution only for its own
+  # address. The two vnet-it actor NICs also use macvlan; ext-supplier is the
+  # sole NIC on vnet-ext and therefore remains bridged.
+  sim-host:
+    type: container
+    cpu: 2
+    memory: 512MB
+    image: ravensport/sim:latest
+    # Immutable root filesystem (sim-network.md §8): the renderer makes the root
+    # disk read-only and mounts tmpfs over /run, /tmp, and /var/log.
+    readonly_root: true
+    nics:
+      - { network: vnet-ot,  ipv4: 10.40.0.51, nic_type: macvlan, name: ot-atg,         hostname: atg-console      }
+      - { network: vnet-ot,  ipv4: 10.40.0.52, nic_type: macvlan, name: ot-disp,        hostname: dispenser        }
+      - { network: vnet-ot,  ipv4: 10.40.0.53, nic_type: macvlan, name: ot-vessel-rfid, hostname: vessel-rfid      }
+      - { network: vnet-ot,  ipv4: 10.40.0.54, nic_type: macvlan, name: ot-op-rfid,     hostname: operator-rfid    }
+      - { network: vnet-ot,  ipv4: 10.40.0.55, nic_type: macvlan, name: ot-operator,    hostname: dock-operator    }
+      - { network: vnet-ext, ipv4: 10.10.0.10,                    name: ext-supplier,   hostname: fuel-supplier-01 }
+      - { network: vnet-it,  ipv4: 10.30.0.11, nic_type: macvlan, name: it-recon-user                              }
+      - { network: vnet-it,  ipv4: 10.30.0.12, nic_type: macvlan, name: it-sysadmin                                }
