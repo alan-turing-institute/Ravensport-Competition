@@ -1,0 +1,46 @@
+[package]
+name = "recon-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Scripted Remote Desktop Protocol probe: drives a session on recon-01 from sim-host and reads the clipboard back."
+
+# The copy-fidelity instrument. It answers one question — does text copied
+# inside a session on `recon-01` reach a Remote Desktop Protocol client, and
+# intact? — and it asks it over the path the reconciliation user actor will
+# take: sim-host's HAProxy egress port 127.0.0.1:20003, source-bound to
+# 10.30.0.11 (`sim-network.md` §5).
+#
+# It is not the actor, and not yet the workstation client of `recon-tests.md`
+# §0.4. It is a scripted keyboard, mouse, screenshot and clipboard reader driven
+# from the command line, so a coordinate or a key sequence can be changed
+# without recompiling. The session mechanics are lifted from the de-risking
+# proof-of-concept; the scancode table and the clipboard sequencing are new.
+#
+# Built for the musl target and run inside `sim-host`; see README.md.
+
+[[bin]]
+name = "recon-probe"
+path = "src/main.rs"
+
+[dependencies]
+# IronRDP protocol stack (async). Versions as proven in the de-risking work.
+ironrdp = { version = "0.16", features = ["connector", "session", "graphics", "input", "cliprdr", "svc", "pdu"] }
+ironrdp-tokio = { version = "0.9", features = ["reqwest"] }
+ironrdp-tls = { version = "0.2", features = ["rustls"] }
+ironrdp-pdu = "0.8"
+ironrdp-graphics = "0.8"
+ironrdp-cliprdr = "0.6"
+ironrdp-core = "0.2"
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "io-util"] }
+# rustls needs a process-wide crypto provider; ring is the one that builds
+# against musl without a C++ toolchain.
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+anyhow = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Digest of what arrived, to compare against the file on the host without
+# reading a kilobyte of lorem ipsum by eye.
+sha2 = "0.10"
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
