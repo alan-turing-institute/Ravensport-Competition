@@ -1,0 +1,76 @@
+flowchart LR
+    subgraph EXT["External"]
+        supplier["Fuel supplier<br/>monitoring platform"]
+    end
+
+    subgraph IT["IT — corporate (Level 4)"]
+        recon["recon-01<br/>Reconciliation WS"]
+        admin["admin-01<br/>Administration WS"]
+    end
+
+    subgraph DMZ["DMZ (Level 3.5)"]
+        relay["atg-relay-01<br/>ATG data relay (HAProxy)"]
+        bastion["dmz-bastion-01<br/>SSH bastion"]
+        histdmz["hist-dmz-01<br/>Historian replica (RO)"]
+    end
+
+    subgraph OT["OT — dock (Level 2/3)"]
+        fms["fms-01<br/>FMS"]
+        hist["hist-01<br/>Historian (primary)"]
+        hmi["hmi-01<br/>HMI"]
+        otidp["idp-ot<br/>(FreeIPA)"]
+        ntp["ntp-ot<br/>(chrony)"]
+    end
+
+    subgraph SIM["Sim-side appliances"]
+        vessel_rfid["Vessel RFID reader"]
+        op_rfid["Operator RFID reader"]
+
+        atg["ATG console<br/>(TLS-450PLUS class)<br/>tank probe + bund leak sensor"]
+        disp["Dispenser<br/>(PD + preset + solenoid)"]
+
+        subgraph Hardwired
+            esd["ESD / overfill<br/>(hardwired — not networked)"]
+        end
+    end
+
+    %% External → DMZ
+    supplier -- "TCP 10001 (inbound)" --> relay
+
+    %% DMZ → SIM (relay proxies to ATG console on vnet-ot)
+    relay -- "TCP 10001 (forward)" --> atg
+
+    %% IT → DMZ
+    recon -- "HTTPS (read-only)" --> histdmz
+    admin -- "SSH" --> bastion
+    bastion -- "SSH" --> fms
+    bastion -- "SSH" --> hist
+    bastion -- "SSH" --> hmi
+
+    %% OT → DMZ
+    hist -- "push (one-way)" --> histdmz
+    ntp -. "NTP" .-> histdmz
+
+    %% Intra-OT
+    hmi -- "HTTPS" --> fms
+    hmi -- "HTTPS (read)" --> hist
+    fms -- "events + ATG tags" --> hist
+    otidp -. "auth" .- fms
+    otidp -. "auth" .- hmi
+
+    %% OT ↔ Sim boundary (§3)
+    fms <-- "TLS serial / TCP 10001" --> atg
+    fms <-- "Modbus TCP" --> disp
+    vessel_rfid -- "virtual serial" --> fms
+    op_rfid -- "virtual serial" --> hmi
+
+    classDef ext fill:#f0f0f0,stroke:#999;
+    classDef it fill:#eaf2ff,stroke:#3a6;
+    classDef dmz fill:#fff6e0,stroke:#c80;
+    classDef ot fill:#ffecec,stroke:#c33;
+    classDef sim fill:#efe,stroke:#393,stroke-dasharray:4 3;
+    class supplier ext;
+    class recon,admin it;
+    class relay,bastion,histdmz dmz;
+    class fms,hist,hmi,otidp,ntp ot;
+    class atg,disp,vessel_rfid,op_rfid,esd sim;
